@@ -1,0 +1,33 @@
+# Codecov configuration for Oscillink Lattice
+# Reference: https://docs.codecov.com/docs/codecov-yaml
+# Start lenient (informational) until baseline stabilizes; tighten later.
+
+codecov:
+  require_ci_to_pass: yes
+
+coverage:
+  precision: 2
+  round: nearest
+  range: 60..100
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 2%
+        informational: true
+    patch:
+      default:
+        target: 80%
+        threshold: 3%
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: true
+  behavior: default
+
+ignore:
+  - "scripts/*"
+  - "docs/*"
+
+# Flags can be added later for unit vs integration tests if needed.

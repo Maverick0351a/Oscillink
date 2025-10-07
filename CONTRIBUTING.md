@@ -35,6 +35,7 @@ pre-commit install  # install git hooks (auto lint on commit)
 - [ ] Tests pass (`pytest -q`)
 - [ ] Coverage reasonable (`pytest --cov=oscillink --cov-report=term-missing`)
 	- Full HTML & trend on Codecov: https://codecov.io/gh/Maverick0351a/Oscillink
+- [ ] Patch coverage not significantly below project coverage (see Codecov PR comment; soft targets: project ≥85%, patch ≥80%).
 - [ ] Lint passes (`ruff check .`)
 - [ ] Types clean (`mypy oscillink`)
 - [ ] CHANGELOG updated (if user-facing)

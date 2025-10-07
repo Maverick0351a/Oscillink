@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/pypi/pyversions/oscillink-lattice.svg)
 ![Coverage](https://codecov.io/gh/Maverick0351a/Oscillink/branch/main/graph/badge.svg)
 
-**Oscillink Lattice** is a small, fast, *physics‑inspired* memory enhancer for generative models.
+**Oscillink Lattice** is a small, fast, *physics‑inspired* coherence layer for generative / embedding workflows – providing structured, explainable short‑term memory without training.
 It builds an ephemeral lattice (graph) over candidate vectors and **settles** to the most coherent
 state by minimizing a convex energy with a **symmetric positive definite** (SPD) system.
 
@@ -73,7 +73,7 @@ See `examples/quickstart.py` for a runnable demo.
 - Receipts: ΔH (trace identity), per‑node attribution, null‑points, diagnostics.
 - Chain Priors: SPD‑safe path Laplacian; **chain verdict** + **weakest link**.
 
-**Docs:** see `docs/` for math spec, API, receipts schema, chain guide, and roadmap.
+**Docs:** see `docs/` for math spec, API, detailed [Receipt Schema](docs/RECEIPT_SCHEMA.md), chain guide, and roadmap.
 
 ---
 
