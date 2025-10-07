@@ -1,0 +1,15 @@
+{
+  "config": {"N": 400, "D": 64, "kneighbors": 6, "trials": 2, "lamG": 1.0, "lamC": 0.5, "lamQ": 4.0, "lamP": 0.2, "chain_len": 8},
+  "trials": [
+    {"build_ms": 0.0, "settle_ms": 0.0, "receipt_ms": 0.0, "deltaH": 0.0, "ustar_iters": 0.0, "ustar_res": 0.0, "ustar_converged": true, "N": 400, "D": 64, "kneighbors": 6}
+  ],
+  "aggregates": {
+    "build_ms": {"mean": 1.0, "stdev": 0.0},
+    "settle_ms": {"mean": 1.0, "stdev": 0.0},
+    "receipt_ms": {"mean": 1.0, "stdev": 0.0},
+    "deltaH": {"mean": 0.0, "stdev": 0.0},
+    "ustar_iters": {"mean": 0.0, "stdev": 0.0},
+    "ustar_res": {"mean": 0.0, "stdev": 0.0}
+  },
+  "converged_all": true
+}

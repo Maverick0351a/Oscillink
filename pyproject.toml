@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oscillink-lattice"
+version = "0.1.1"
+description = "Oscillink Lattice — Short-Term Coherence SDK (physics-inspired memory for generative models)"
+authors = [{name="Oscillink", email="contact@oscillink.com"}]
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+dependencies = [
+  "numpy>=1.22,<2.0",
+  "typing_extensions>=4.7"
+]
+keywords = ["graph", "lattice", "memory", "retrieval", "ai", "ml", "coherence", "physics-inspired"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff>=0.5.0", "mypy>=1.5"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E","F","I","UP","B","N","SIM","C90"]
+# Ignore style modernizations we defer (keep Py3.9 syntax & explicit typing imports)
+ignore = [
+  "N802","N803","N806",  # naming
+  "UP035","UP045","UP006","UP037",  # typing modernization / union pipe (needs py310)
+  "SIM105","SIM910"  # optional stylistic simplifications
+]
+
+[tool.mypy]
+python_version = "3.9"
+warn_unused_ignores = true
+pretty = true

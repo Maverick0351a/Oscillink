@@ -1,0 +1,62 @@
+# ---- Python bytecode / caches ----
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ---- Virtual environments ----
+.venv/
+venv/
+.env
+.env.*
+
+# ---- Packaging / build artifacts ----
+build/
+dist/
+*.egg-info/
+.eggs/
+wheelhouse/
+
+# ---- Test / coverage artifacts ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# ---- Logs & profiling ----
+*.log
+*.prof
+*.perf.json
+
+# ---- Bench / perf scratch outputs (keep baseline JSON committed) ----
+bench_outputs/
+perf_outputs/
+# (scripts/perf_baseline.json is tracked intentionally)
+
+# ---- State / export artifacts (user generated) ----
+exports/
+*.npz
+state_*.json
+
+# ---- Editor / IDE ----
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# ---- OS noise ----
+.DS_Store
+Thumbs.db
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+.jupyter/
+
+# ---- Misc ----
+.cache/
+.tmp/
+
+# End of .gitignore

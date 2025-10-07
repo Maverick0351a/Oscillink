@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest an idea or enhancement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: High-level description of the proposed feature.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? Why is it valuable?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API / Changes
+      description: Suggested interface, config, or behavior.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Complexity / Scope
+      options:
+        - Small
+        - Medium
+        - Large
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional Context

@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Ruff Lint
+        run: ruff check .
+      - name: Mypy Type Check
+        run: mypy oscillink
+      - name: Pytest
+        run: pytest -q
+      - name: Performance Check
+        run: |
+          python scripts/perf_check.py --baseline scripts/perf_baseline.json --N 400 --D 64 --kneighbors 6 --trials 2 || echo "Perf check failed (non-blocking)"
