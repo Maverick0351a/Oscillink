@@ -16,6 +16,7 @@ pip install -e .[dev]
 ruff check .
 mypy oscillink
 pytest -q
+pre-commit install  # install git hooks (auto lint on commit)
 ```
 
 ## Issue Tracking
@@ -32,6 +33,7 @@ pytest -q
 
 ### Fast Checklist
 - [ ] Tests pass (`pytest -q`)
+- [ ] Coverage reasonable (`pytest --cov=oscillink --cov-report=term-missing`)
 - [ ] Lint passes (`ruff check .`)
 - [ ] Types clean (`mypy oscillink`)
 - [ ] CHANGELOG updated (if user-facing)

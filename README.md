@@ -4,6 +4,7 @@
 ![PyPI](https://img.shields.io/pypi/v/oscillink-lattice.svg)
 ![License](https://img.shields.io/github/license/Maverick0351a/Oscillink.svg)
 ![Python](https://img.shields.io/pypi/pyversions/oscillink-lattice.svg)
+![Coverage](https://img.shields.io/badge/coverage-ci--artifact-informational)
 
 **Oscillink Lattice** is a small, fast, *physics‑inspired* memory enhancer for generative models.
 It builds an ephemeral lattice (graph) over candidate vectors and **settles** to the most coherent
@@ -25,6 +26,9 @@ python -m venv .venv
 source .venv/bin/activate   # (or .\.venv\Scripts\activate on Windows)
 pip install -e .
 pytest -q
+
+# optional: run with coverage
+pytest -q --cov=oscillink --cov-report=term-missing
 ```
 
 ### Minimal example
@@ -290,6 +294,12 @@ Issues & PRs welcome. Please:
 - Use the provided **Bug report** / **Feature request** templates.
 - Follow the checklist in the PR template.
 - Update `CHANGELOG.md` for user-visible changes.
+
+### Developer Tooling
+- Install git hooks: `pre-commit install`
+- Auto-fix lint: `ruff check . --fix`
+- Coverage (XML + terminal): `pytest --cov=oscillink --cov-report=xml --cov-report=term-missing`
+- Fast dev cycle helper (optional): `python scripts/benchmark.py --N 400 --D 64 --kneighbors 6 --trials 1`
 
 See `CONTRIBUTING.md` for full guidelines and release process.
 
