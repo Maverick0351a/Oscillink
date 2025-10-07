@@ -44,6 +44,7 @@ ignore = [
   "N802","N803","N806",  # naming
   "UP035","UP045","UP006","UP037",  # typing modernization / union pipe (needs py310)
   "SIM105","SIM910"  # optional stylistic simplifications
+  ,"E501"  # allow longer lines (benchmark/log payload clarity & doc tables); revisit later
 ]
 
 [tool.mypy]

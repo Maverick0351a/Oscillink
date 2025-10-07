@@ -5,8 +5,14 @@ Example:
   python scripts/benchmark.py --N 2000 --D 128 --kneighbors 8 --trials 3
 """
 from __future__ import annotations
-import argparse, time, statistics as stats, json
+
+import argparse
+import json
+import statistics as stats
+import time
+
 import numpy as np
+
 from oscillink import OscillinkLattice
 
 
@@ -83,7 +89,7 @@ def main():
         }
         print(json.dumps(payload, indent=2))
     else:
-        print("Oscillink Benchmark (trials=%d)" % args.trials)
+        print(f"Oscillink Benchmark (trials={args.trials})")
         print(f"N={args.N} D={args.D} k={args.kneighbors} lamG={args.lamG} lamC={args.lamC} lamQ={args.lamQ} lamP={args.lamP}")
         print(f"build_ms   : {agg('build_ms')}")
         print(f"settle_ms  : {agg('settle_ms')}")
