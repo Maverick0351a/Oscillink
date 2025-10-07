@@ -38,6 +38,13 @@ dev = [
   "mypy>=1.5",
   "pre-commit>=3.7"
 ]
+cloud = [
+  "fastapi>=0.111",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.5",
+  "orjson>=3.9",
+  "python-multipart>=0.0.6"
+]
 
 [tool.ruff]
 line-length = 100
