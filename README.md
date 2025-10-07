@@ -1,8 +1,8 @@
 # Oscillink Lattice — Short‑Term Coherence SDK (Phase 1)
 
-![CI](https://github.com/REPO_OWNER/REPO_SLUG/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg)
 ![PyPI](https://img.shields.io/pypi/v/oscillink-lattice.svg)
-![License](https://img.shields.io/github/license/REPO_OWNER/REPO_SLUG.svg)
+![License](https://img.shields.io/github/license/Maverick0351a/Oscillink.svg)
 ![Python](https://img.shields.io/pypi/pyversions/oscillink-lattice.svg)
 
 **Oscillink Lattice** is a small, fast, *physics‑inspired* memory enhancer for generative models.
@@ -59,8 +59,7 @@ See `examples/quickstart.py` for a runnable demo.
 
 - `OscillinkLattice`: build lattice, settle, receipts, chain_receipt, bundle.
 - **Caching**: stationary solution `U*` cached & reused across diagnostics.
-- **Export / Import**: `export_state()` / `OscillinkLattice.from_state()` for reproducibility.
- - **Export / Import**: `export_state()` / `OscillinkLattice.from_state()` (JSON) and binary `save_state(..., format='npz')` for reproducibility.
+- **Export / Import**: `export_state()` / `OscillinkLattice.from_state()` (JSON) and binary `save_state(..., format='npz')` for reproducibility.
 - **Receipt Meta & Version**: `receipt()` now returns `version` + `meta` (cache usage, signature, solve stats, convergence). See `docs/RECEIPT_SCHEMA.md`.
 - **Callbacks**: register post‑settle diagnostics hooks via `add_settle_callback(fn)`.
 - **Forced Refresh**: `refresh_Ustar()` to recompute stationary solution ignoring cache.

@@ -1,4 +1,5 @@
 import numpy as np
+
 from oscillink import OscillinkLattice
 
 def test_export_import_signature_stable():
