@@ -21,6 +21,24 @@ state by minimizing a convex energy with a **symmetric positive definite** (SPD)
 
 ## Quickstart
 
+### Installation
+
+From PyPI (recommended):
+
+```bash
+pip install oscillink-lattice
+```
+
+Editable install for local development / contributions:
+
+```bash
+git clone https://github.com/Maverick0351a/Oscillink.git
+cd Oscillink
+pip install -e .[dev]
+```
+
+Then continue with the quickstart below.
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # (or .\.venv\Scripts\activate on Windows)
@@ -76,6 +94,41 @@ See `examples/quickstart.py` for a runnable demo.
 **Docs:** see `docs/` for math spec, API, detailed [Receipt Schema](docs/RECEIPT_SCHEMA.md), chain guide, and roadmap.
 
 ---
+
+### Feature Snapshot
+
+| Capability | What it Means | Why it Matters |
+|------------|---------------|----------------|
+| Receipts (ΔH) | Decomposed energy improvement | Auditable, explainable ranking signal |
+| Deterministic Signatures | Stable hash over structure & params | Repro + tamper detection |
+| Chain Priors | Optional path Laplacian | Steer reasoning / narrative continuity |
+| Null-Point Diagnostics | Edge-level anomaly surfacing | Spot incoherent nodes fast |
+| Stationary Caching | Reuse U* across diagnostics | Lower latency for multiple queries |
+| Binary + JSON Export | Round‑trip state & provenance | Persistence & offline analysis |
+| Structured Logging | JSON event hooks | Integrate with observability stacks |
+| Performance Scripts | Benchmarks, scaling, perf guard | Prevent silent regressions |
+| HMAC Receipt Signing | Integrity sealing | Trust boundary enforcement |
+
+
+## Performance (Indicative)
+
+On a modern laptop (Python 3.11, NumPy default BLAS), a medium case `N=1200, D=128, k=8` typically reports (single trial):
+
+```
+graph_build_ms:   ~18
+ustar_solve_ms:   ~40   (CG iters ≈ 25–35)
+settle_ms:        ~6–10
+receipt_ms:       ~3
+```
+
+Numbers vary with BLAS + hardware. Use `scripts/benchmark.py` to profile:
+
+```bash
+python scripts/benchmark.py --N 1200 --D 128 --kneighbors 8 --trials 3 --json
+```
+
+CI includes a permissive perf guard (`scripts/perf_check.py`). Tighten tolerance once the baseline stabilizes.
+
 
 ## Design principles
 
@@ -279,6 +332,17 @@ assert lat.verify_current_receipt("my-shared-secret")
 ```
 
 If payload fields or the signature are tampered with the verification returns `False`.
+
+---
+## Positioning vs Vector DBs & Rerankers
+
+Oscillink is a transient coherence/refinement layer, not a store or heavy neural reranker.
+
+- Bring your own candidate embeddings (often from a vector DB retrieval step).
+- Apply Oscillink to induce a globally coherent adjustment and receive structured receipts.
+- Feed the refined bundle or chain verdict downstream (generation, reasoning, routing).
+
+It complements: (1) vector DBs for scalable recall, (2) cross‑encoders / rerankers for semantic precision. Use Oscillink when you need *explainable* short‑term memory shaping with deterministic math.
 
 ---
 
