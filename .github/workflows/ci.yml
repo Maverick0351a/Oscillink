@@ -27,6 +27,13 @@ jobs:
         with:
           name: coverage-xml
           path: coverage.xml
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+          verbose: true
       - name: Performance Check
         run: |
           python scripts/perf_check.py --baseline scripts/perf_baseline.json --N 400 --D 64 --kneighbors 6 --trials 2 || echo "Perf check failed (non-blocking)"

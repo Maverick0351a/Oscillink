@@ -4,7 +4,7 @@
 ![PyPI](https://img.shields.io/pypi/v/oscillink-lattice.svg)
 ![License](https://img.shields.io/github/license/Maverick0351a/Oscillink.svg)
 ![Python](https://img.shields.io/pypi/pyversions/oscillink-lattice.svg)
-![Coverage](https://img.shields.io/badge/coverage-ci--artifact-informational)
+![Coverage](https://codecov.io/gh/Maverick0351a/Oscillink/branch/main/graph/badge.svg)
 
 **Oscillink Lattice** is a small, fast, *physics‑inspired* memory enhancer for generative models.
 It builds an ephemeral lattice (graph) over candidate vectors and **settles** to the most coherent

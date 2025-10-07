@@ -1,4 +1,8 @@
-import os, tempfile, numpy as np
+import os
+import tempfile
+
+import numpy as np
+
 from oscillink import OscillinkLattice
 
 

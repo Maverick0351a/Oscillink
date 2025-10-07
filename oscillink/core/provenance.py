@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict
 import hashlib
-import json
+from typing import Any, Dict
+
 import numpy as np
 
 from .lattice import OscillinkLattice

@@ -2,6 +2,7 @@ import numpy as np
 
 from oscillink import OscillinkLattice
 
+
 def test_export_import_signature_stable():
     Y = np.random.RandomState(0).randn(20, 5).astype(np.float32)
     lat = OscillinkLattice(Y, kneighbors=4, deterministic_k=True, neighbor_seed=42)

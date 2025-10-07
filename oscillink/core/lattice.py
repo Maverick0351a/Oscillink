@@ -15,8 +15,7 @@ from .graph import (
     normalized_laplacian,
     row_sum_cap,
 )
-from .receipts import deltaH_trace, null_points, per_node_components
-from .receipts import verify_receipt
+from .receipts import deltaH_trace, null_points, per_node_components, verify_receipt
 from .solver import cg_solve
 
 
@@ -647,7 +646,8 @@ def json_line_logger(stream=None):
     Usage:
         lat.set_logger(json_line_logger())
     """
-    import sys, json as _json
+    import json as _json
+    import sys
     if stream is None:
         stream = sys.stderr
 

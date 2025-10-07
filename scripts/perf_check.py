@@ -7,9 +7,12 @@ Usage:
 Exits non-zero if mean times regress by more than allowed tolerance percentage.
 """
 from __future__ import annotations
-import argparse, json, sys, statistics as stats
+
+import argparse
+import json
+import subprocess
+import sys
 from pathlib import Path
-import subprocess, tempfile, os
 
 DEFAULT_TOLERANCE_PCT = 35.0  # generous to avoid CI flakiness
 

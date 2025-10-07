@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 """Capture a performance snapshot JSON using benchmark --json output."""
 from __future__ import annotations
-import argparse, json, sys, subprocess
+
+import argparse
+import subprocess
+import sys
 
 
 def main():

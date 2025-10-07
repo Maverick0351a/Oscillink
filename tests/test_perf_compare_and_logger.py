@@ -1,7 +1,9 @@
-import io, json
-from oscillink.core.perf import compare_perf
-from oscillink.core.lattice import json_line_logger, OscillinkLattice
+import io
+
 import numpy as np
+
+from oscillink.core.lattice import OscillinkLattice, json_line_logger
+from oscillink.core.perf import compare_perf
 
 
 def test_compare_perf_detects_no_failures():

@@ -9,8 +9,13 @@ Each line: {"N":..., "D":..., "k":..., "trial": t, "graph_build_ms":..., "ustar_
 Intended for quick local scaling curves and CI spot checks (keep sizes modest there).
 """
 from __future__ import annotations
-import argparse, json, time, sys
+
+import argparse
+import json
+import sys
+
 import numpy as np
+
 from oscillink import OscillinkLattice
 
 

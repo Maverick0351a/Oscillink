@@ -34,6 +34,7 @@ pre-commit install  # install git hooks (auto lint on commit)
 ### Fast Checklist
 - [ ] Tests pass (`pytest -q`)
 - [ ] Coverage reasonable (`pytest --cov=oscillink --cov-report=term-missing`)
+	- Full HTML & trend on Codecov: https://codecov.io/gh/Maverick0351a/Oscillink
 - [ ] Lint passes (`ruff check .`)
 - [ ] Types clean (`mypy oscillink`)
 - [ ] CHANGELOG updated (if user-facing)

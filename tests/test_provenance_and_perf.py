@@ -1,4 +1,9 @@
-import json, subprocess, sys, os, numpy as np
+import json
+import subprocess
+import sys
+
+import numpy as np
+
 from oscillink import OscillinkLattice
 
 

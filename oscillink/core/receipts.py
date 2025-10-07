@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
-import hmac
 import hashlib
+import hmac
 import json
+
+import numpy as np
 
 
 def deltaH_trace(
