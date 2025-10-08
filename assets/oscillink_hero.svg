@@ -1,0 +1,7 @@
+<!-- Placeholder SVG content inserted; replace with actual provided SVG if different -->
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="640" height="180" viewBox="0 0 640 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="180" rx="12" fill="#0A0F1A"/>
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI, Arial" font-size="28" fill="#F5F7FA">Oscillink Lattice</text>
+  <text x="50%" y="72%" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI, Arial" font-size="14" fill="#A9B4C2">Graph-theoretic SPD Coherence Layer</text>
+</svg>

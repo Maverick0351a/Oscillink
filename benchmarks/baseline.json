@@ -1,0 +1,20 @@
+{
+  "version": "0.1.1",
+  "date": "2025-10-07",
+  "environment": {
+    "python": "<fill-at-measurement>",
+    "platform": "<fill-at-measurement>",
+    "notes": "Indicative local dev machine timings; treat as coarse guardrails only."
+  },
+  "scenarios": [
+    {
+      "name": "settle_basic_N1200_D128_k8",
+      "params": {"N": 1200, "D": 128, "kneighbors": 8, "lamG": 0.1, "lamC": 0.0, "lamQ": 0.0},
+      "metrics_ms": {
+        "total_settle_ms": 0
+      },
+      "placeholder": true,
+      "instruction": "Run a local timing capturing 5 runs median; update total_settle_ms and remove placeholder flag."
+    }
+  ]
+}

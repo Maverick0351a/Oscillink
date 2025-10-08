@@ -32,16 +32,17 @@ def mutual_knn_adj(
     np.fill_diagonal(S, -np.inf)
 
     if deterministic:
-        # full sort for reproducibility
+        # Full deterministic ordering: similarity descending, then index ascending.
+        # np.lexsort uses last key as primary, so provide (index, -similarity).
         A = np.zeros((N, N), dtype=np.float32)
+        indices = np.arange(N)
         for i in range(N):
             row = S[i]
-            # argsort descending then slice
-            order = np.lexsort((-np.arange(N), -row))  # primary: row desc, secondary: index asc
+            order = np.lexsort((indices, -row))  # primary: -row (similarity desc), tie-break: index asc
             keep = order[:k]
             for j in keep:
                 if row[j] > 0:
-                    A[i, j] = float(row[j])
+                    A[i, j] = float(max(row[j], 0.0))
     else:
         if seed is not None:
             rng = np.random.default_rng(seed)
@@ -58,9 +59,20 @@ def mutual_knn_adj(
     return A
 
 def row_sum_cap(A: np.ndarray, cap: float) -> np.ndarray:
+    """Cap row sums while preserving (approximate) symmetry.
+
+    Original implementation scaled rows independently which could break symmetry
+    of an already symmetrized mutual-kNN adjacency. For SPD guarantees we prefer
+    to keep A as close to symmetric as possible. We compute per-row scale then
+    apply the geometric mean of scale_i and scale_j to each edge weight.
+    """
     sums = A.sum(axis=1, keepdims=True) + 1e-12
-    scale = np.minimum(1.0, cap / sums)
-    return A * scale
+    scale = np.minimum(1.0, cap / sums).astype(np.float32)
+    # geometric mean scaling for symmetry preservation
+    gs = np.sqrt(scale * scale.T)
+    A2 = A * gs
+    # final symmetrization guard (numerical drift)
+    return 0.5 * (A2 + A2.T)
 
 def normalized_laplacian(A: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     d = A.sum(axis=1)

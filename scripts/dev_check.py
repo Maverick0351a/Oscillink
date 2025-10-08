@@ -11,6 +11,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
+
 def run(cmd: list[str]) -> int:
     print(f"\n>> {' '.join(cmd)}")
     return subprocess.call(cmd)

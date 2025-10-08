@@ -1,6 +1,9 @@
 from __future__ import annotations
-from typing import List, Optional
+
+from typing import Optional
+
 from pydantic import BaseModel, Field, conlist
+
 
 class Params(BaseModel):
     lamG: float = 1.0
@@ -19,7 +22,8 @@ class SettleOptions(BaseModel):
     include_receipt: bool = True
 
 class SettleRequest(BaseModel):
-    Y: list[conlist(float, min_items=1)] = Field(..., description="Matrix N x D")
+    # Y is a list of rows (each a list[float]); shape validation performed in endpoint logic.
+    Y: list[list[float]] = Field(..., description="Matrix N x D (list of rows)")
     psi: Optional[list[float]] = None
     gates: Optional[list[float]] = None
     chain: Optional[list[int]] = None
@@ -36,3 +40,22 @@ class ReceiptResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
+
+
+class AdminKeyUpdate(BaseModel):
+    tier: str | None = None
+    status: str | None = None  # active|revoked|suspended|pending
+    quota_limit_units: int | None = None
+    quota_window_seconds: int | None = None
+    features: dict[str, bool] | None = None
+
+
+class AdminKeyResponse(BaseModel):
+    api_key: str
+    tier: str
+    status: str
+    quota_limit_units: int | None = None
+    quota_window_seconds: int | None = None
+    features: dict[str, bool] = {}
+    created_at: float
+    updated_at: float

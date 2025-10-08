@@ -55,13 +55,15 @@ class OscillinkLattice:
         self.N, self.D = self.Y.shape
 
         # neighbor build config
-        self._kneighbors = kneighbors
+        # Clamp kneighbors defensively to avoid errors when user passes k >= N
+        k_eff = min(kneighbors, max(1, self.N - 1))
+        self._kneighbors = k_eff
         self._deterministic_k = bool(deterministic_k)
         self._neighbor_seed = neighbor_seed
         t_build0 = time.time()
         A = mutual_knn_adj(
             self.Y,
-            k=kneighbors,
+            k=k_eff,
             deterministic=self._deterministic_k,
             seed=self._neighbor_seed,
         )
@@ -87,8 +89,10 @@ class OscillinkLattice:
         self._settle_callbacks: list = []  # user-provided callbacks
         self._logger = None
         self._receipt_secret: Optional[bytes] = None
+        # signature mode: 'minimal' (default) or 'extended'
+        self._signature_mode: str = "minimal"
         self._log("init", {
-            "N": self.N, "D": self.D, "kneighbors": kneighbors,
+            "N": self.N, "D": self.D, "kneighbors_requested": kneighbors, "kneighbors_effective": k_eff,
             "deterministic_k": self._deterministic_k, "neighbor_seed": self._neighbor_seed
         })
 
@@ -286,14 +290,36 @@ class OscillinkLattice:
             # adjacency stats
             "avg_degree": float(np.sum(self.A > 0) / max(self.N, 1)),
             "edge_density": float(np.sum(self.A > 0) / max(self.N * (self.N - 1), 1)),
+            # gating stats (Experimental): summarize B_diag distribution
+            "gates_min": float(np.min(self.B_diag)),
+            "gates_max": float(np.max(self.B_diag)),
+            "gates_mean": float(np.mean(self.B_diag)),
+            "gates_uniform": bool(np.allclose(self.B_diag, self.B_diag[0])),
+            # deterministic lattice signature (added for parity with cloud endpoints & docs)
+            "state_sig": self._signature(),
         }
         # signing (optional)
         signature_block = None
         if self._receipt_secret is not None:
-            payload = {
-                "state_sig": self._signature(),
-                "deltaH_total": float(dH),
-            }
+            if self._signature_mode == "extended":
+                payload = {
+                    "sig_v": 1,
+                    "mode": "extended",
+                    "state_sig": self._signature(),
+                    "deltaH_total": float(dH),
+                    "ustar_iters": int(self.last_ustar.get("iters", 0) if hasattr(self, "last_ustar") else 0),
+                    "ustar_res": float(self.last_ustar.get("res", 0.0) if hasattr(self, "last_ustar") else 0.0),
+                    "ustar_converged": bool(self.last_ustar.get("converged", True) if hasattr(self, "last_ustar") else True),
+                    "params": {"lamG": self.lamG, "lamC": self.lamC, "lamQ": self.lamQ, "lamP": self.lamP},
+                    "graph": {"k": self._kneighbors, "deterministic_k": self._deterministic_k, "neighbor_seed": self._neighbor_seed},
+                }
+            else:  # minimal
+                payload = {
+                    "sig_v": 1,
+                    "mode": "minimal",
+                    "state_sig": self._signature(),
+                    "deltaH_total": float(dH),
+                }
             raw = json.dumps(payload, sort_keys=True).encode("utf-8")
             sig_hex = hmac.new(self._receipt_secret, raw, hashlib.sha256).hexdigest()
             signature_block = {"algorithm": "HMAC-SHA256", "payload": payload, "signature": sig_hex}
@@ -625,6 +651,19 @@ class OscillinkLattice:
             if isinstance(secret, str):
                 secret = secret.encode("utf-8")
             self._receipt_secret = secret
+
+    def set_signature_mode(self, mode: str) -> None:
+        """Configure signature payload size.
+
+        mode:
+          - 'minimal' (default): state_sig + deltaH_total
+          - 'extended': adds convergence stats, params and graph build params.
+        Any other value raises ValueError.
+        """
+        m = mode.lower().strip()
+        if m not in {"minimal", "extended"}:
+            raise ValueError("mode must be 'minimal' or 'extended'")
+        self._signature_mode = m
 
     # --- Representation ---
     def __repr__(self) -> str:  # pragma: no cover (formatting deterministic & simple)
