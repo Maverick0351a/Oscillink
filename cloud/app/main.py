@@ -965,15 +965,15 @@ async def stripe_webhook(request: Request):
             # Fallback: parse JSON without cryptographic validation (NOT FOR PROD)
             try:
                 event = json.loads(payload_text)
-            except Exception:
-                raise HTTPException(status_code=400, detail="invalid JSON payload (no stripe lib)")
+            except Exception as err:
+                raise HTTPException(status_code=400, detail="invalid JSON payload (no stripe lib)") from err
         except Exception as e:  # signature failure
-            raise HTTPException(status_code=400, detail=f"signature verification failed: {e}")
+            raise HTTPException(status_code=400, detail=f"signature verification failed: {e}") from e
     else:
         try:
             event = json.loads(payload_text)
-        except Exception:
-            raise HTTPException(status_code=400, detail="invalid JSON payload")
+        except Exception as err:
+            raise HTTPException(status_code=400, detail="invalid JSON payload") from err
 
     etype = event.get("type", "unknown") if isinstance(event, dict) else getattr(event, "type", "unknown")
     event_id = event.get("id") if isinstance(event, dict) else getattr(event, "id", None)
