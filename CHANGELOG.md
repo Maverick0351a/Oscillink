@@ -1,4 +1,17 @@
 # [0.1.5] - 2025-10-08
+# [0.1.6] - 2025-10-10
+### Changed
+- Switch to PyPI Trusted Publishing (GitHub OIDC) — no API tokens required.
+- Direct-to-PyPI on GitHub Release; removed TestPyPI step from workflow.
+- Organized imports in FastAPI app to satisfy linting.
+
+### Documentation
+- README updated with OIDC publish instructions and simplified release flow.
+
+### CI/CD
+- Consolidated publish workflow: build sdist/wheel and publish on Release via `pypa/gh-action-pypi-publish`.
+
+# [0.1.5] - 2025-10-08
 ### Added
 - In-memory per-IP rate limiting (`OSCILLINK_IP_RATE_LIMIT`, `OSCILLINK_IP_RATE_WINDOW`, `OSCILLINK_TRUST_XFF`) with response headers (`X-IPLimit-*`).
 - Webhook timestamp freshness enforcement for Stripe (`OSCILLINK_STRIPE_MAX_AGE`, default 300s) rejecting stale replay attempts.
