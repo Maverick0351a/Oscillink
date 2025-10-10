@@ -950,6 +950,28 @@ def _new_api_key() -> str:
     except Exception:
         return "ok_" + uuid.uuid4().hex
 
+# --- CLI signup sessions (device-code style) ---
+# In-memory store mapping a short code to pending/provisioned status. Optional persistence can be added later.
+_CLI_SESSIONS: dict[str, dict[str, Any]] = {}
+try:
+    _CLI_TTL_SEC = int(os.getenv("OSCILLINK_CLI_TTL", "900"))  # 15 minutes default
+except ValueError:
+    _CLI_TTL_SEC = 900
+
+def _new_cli_code() -> str:
+    # short, unguessable code for CLI pairing
+    try:
+        import secrets
+        return secrets.token_hex(4)  # 8 hex chars
+    except Exception:
+        return uuid.uuid4().hex[:8]
+
+def _purge_cli_sessions():
+    now = time.time()
+    expired = [c for c, rec in _CLI_SESSIONS.items() if now - rec.get("created", now) > _CLI_TTL_SEC or rec.get("status") == "claimed"]
+    for c in expired:
+        _CLI_SESSIONS.pop(c, None)
+
 # --- Optional Firestore mapping: api_key -> (stripe_customer_id, subscription_id) ---
 _CUSTOMERS_COLLECTION = os.getenv("OSCILLINK_CUSTOMERS_COLLECTION", "").strip()
 
@@ -1075,6 +1097,70 @@ def _provision_key_for_subscription(sub: dict) -> tuple[str, str, str]:  # (api_
     ks = get_keystore()
     ks.update(api_key, create=True, tier=new_tier, status=status, features={"diffusion_gates": tinfo.diffusion_allowed})
     return api_key, new_tier, status
+
+@app.post("/billing/cli/start")
+def billing_cli_start(tier: str = "beta", email: str | None = None):  # pragma: no cover - external dependency path
+    """Start a CLI signup session and return a Checkout URL plus a short code.
+
+    The user completes checkout in a browser; the server provisions an API key on webhook
+    and makes it available for retrieval via /billing/cli/poll/{code}.
+    """
+    # Pick a price for the requested tier using the configured price->tier map
+    pmap = get_price_map()  # maps price_id -> tier
+    price_id = next((pid for pid, t in pmap.items() if t == tier), None)
+    if not price_id:
+        raise HTTPException(status_code=400, detail=f"no Stripe price configured for tier '{tier}'")
+    stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
+    if not stripe_secret:
+        raise HTTPException(status_code=503, detail="billing not configured")
+    code = _new_cli_code()
+    try:
+        import stripe  # type: ignore
+        stripe.api_key = stripe_secret
+        stripe.api_version = "2024-06-20"
+        success_url = os.getenv("OSCILLINK_CLI_SUCCESS_URL", "https://oscillink.com/thanks")
+        # Create a Checkout Session with the code embedded for correlation
+        _kwargs = dict(
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            client_reference_id=code,
+            metadata={"cli_code": code},
+            success_url=success_url,
+            allow_promotion_codes=True,
+        )
+        if email:
+            _kwargs["customer_email"] = email
+        sess = stripe.checkout.Session.create(**_kwargs)  # type: ignore
+        _purge_cli_sessions()
+        _CLI_SESSIONS[code] = {
+            "status": "pending",
+            "created": time.time(),
+            "session_id": getattr(sess, "id", None) or sess.get("id"),
+            "tier": tier,
+            "email": email,
+        }
+        return {
+            "code": code,
+            "checkout_url": getattr(sess, "url", None) or sess.get("url"),
+            "expires_in": _CLI_TTL_SEC,
+        }
+    except ModuleNotFoundError as exc:
+        raise HTTPException(status_code=501, detail="stripe library not installed") from exc
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"failed to start CLI session: {e}") from e
+
+@app.get("/billing/cli/poll/{code}")
+def billing_cli_poll(code: str):
+    """Poll the status of a CLI signup session and return the API key when ready."""
+    _purge_cli_sessions()
+    rec = _CLI_SESSIONS.get(code)
+    if not rec:
+        return {"status": "expired"}
+    if rec.get("status") == "provisioned":
+        # Mark as claimed to allow eventual purge
+        rec["status"] = "claimed"
+        return {"status": "ready", "api_key": rec.get("api_key"), "tier": rec.get("tier")}
+    return {"status": "pending"}
 
 @app.get("/billing/success")
 def billing_success(session_id: str | None = None):  # pragma: no cover - external dependency path
@@ -1584,6 +1670,13 @@ async def stripe_webhook(request: Request):  # noqa: C901
                     _fs_set_customer_mapping(api_key, cust_id, sub_id)
                 except Exception:
                     pass
+                # If this checkout was initiated via CLI, fulfill the CLI session
+                try:
+                    cli_code = (session.get("client_reference_id") if isinstance(session, dict) else None) or ((session.get("metadata") or {}).get("cli_code") if isinstance(session, dict) else None)
+                except Exception:
+                    cli_code = None
+                if cli_code and cli_code in _CLI_SESSIONS:
+                    _CLI_SESSIONS[cli_code].update({"status": "provisioned", "api_key": api_key, "tier": new_tier, "updated": time.time()})
                 if email:
                     _send_key_email(email, api_key, new_tier, status)
                 processed = True

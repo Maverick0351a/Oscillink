@@ -33,6 +33,8 @@ class TierInfo:
 # Static fallback tier catalog; real caps can be refined later
 TIER_CATALOG: Dict[str, TierInfo] = {
     "free": TierInfo(name="free", monthly_unit_cap=5_000_000, diffusion_allowed=False),
+    # Beta access: lower price, hard monthly cap, diffusion allowed; support is limited operationally (docs-level)
+    "beta": TierInfo(name="beta", monthly_unit_cap=25_000_000, diffusion_allowed=True),
     "pro": TierInfo(name="pro", monthly_unit_cap=50_000_000, diffusion_allowed=True),
     # Enterprise requires manual activation by an admin (pending until approved)
     "enterprise": TierInfo(name="enterprise", monthly_unit_cap=None, diffusion_allowed=True, requires_manual_activation=True),
@@ -68,6 +70,8 @@ _price_map_cache: Dict[str, str] | None = None
 # OSCILLINK_STRIPE_PRICE_MAP. Environment mapping (when present) overrides these.
 # NOTE: Keep keys stable; changing them will break existing subscriptions.
 _DEFAULT_PRICE_MAP: Dict[str, str] = {
+    # Beta monthly subscription price id (placeholder ID used in tests/dev)
+    "price_cloud_beta_monthly": "beta",
     # Pro monthly subscription price id (placeholder ID used in tests)
     "price_cloud_pro_monthly": "pro",
     # Enterprise subscription price id (requires manual activation -> pending status initially)

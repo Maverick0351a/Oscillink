@@ -3,7 +3,7 @@ requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "oscillink-lattice"
+name = "oscillink"
 version = "0.1.5"
 description = "Oscillink Lattice — Short-Term Coherence SDK (physics-inspired memory for generative models)"
 authors = [{name="Oscillink", email="contact@oscillink.com"}]
@@ -30,6 +30,9 @@ classifiers = [
   "Programming Language :: Python :: 3.12"
 ]
 
+[project.scripts]
+oscillink = "oscillink.cli:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=7.0",
@@ -45,6 +48,8 @@ dev = [
 cloud = [
   "fastapi>=0.111",
   "uvicorn[standard]>=0.30",
+  "gunicorn>=21.0",
+  "redis>=5.0",
   "pydantic>=2.5",
   "orjson>=3.9",
   "python-multipart>=0.0.6",
@@ -58,6 +63,8 @@ cloud-all = [
   # Unified set of dependencies from 'cloud' and 'billing' (avoid recursive self reference)
   "fastapi>=0.111",
   "uvicorn[standard]>=0.30",
+  "gunicorn>=21.0",
+  "redis>=5.0",
   "pydantic>=2.5",
   "orjson>=3.9",
   "python-multipart>=0.0.6",

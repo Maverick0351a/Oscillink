@@ -1,7 +1,7 @@
 """Utility script to create Stripe products/prices for Oscillink tiers.
 
-Usage (requires STRIPE_API_KEY env var):
-  python scripts/stripe_setup.py --create --output price_map.json
+Usage (requires STRIPE_API_KEY or STRIPE_SECRET_KEY env var, or pass --api-key):
+    python scripts/stripe_setup.py --create --output price_map.json
 
 Outputs a JSON mapping of price_id -> tier suitable for OSCILLINK_STRIPE_PRICE_MAP.
 If products/prices already exist (matched by metadata.tier) it reuses them.
@@ -25,20 +25,22 @@ except ImportError:  # pragma: no cover
 
 stripe.api_version = "2024-06-20"
 
-TIERS = [
+BASE_TIERS = [
     {"name": "Oscillink Free", "tier": "free", "amount": 0, "interval": "month", "currency": "usd"},
-    {"name": "Oscillink Pro", "tier": "pro", "amount": 4900, "interval": "month", "currency": "usd"},
+    {"name": "Oscillink Beta", "tier": "beta", "amount": 1900, "interval": "month", "currency": "usd"},
     {"name": "Oscillink Enterprise", "tier": "enterprise", "amount": 0, "interval": "month", "currency": "usd", "custom": True},
 ]
+PRO_TIER = {"name": "Oscillink Pro", "tier": "pro", "amount": 4900, "interval": "month", "currency": "usd"}
 
 
-def ensure_products_and_prices(live: bool = False) -> Dict[str, str]:  # noqa: C901
+def ensure_products_and_prices(include_pro: bool = False) -> Dict[str, str]:  # noqa: C901
     """Create or reuse products+prices; return price_id -> tier mapping.
 
     Complexity acceptable for now (Stripe API orchestration); suppressed with noqa.
     """
+    tiers = list(BASE_TIERS) + ([PRO_TIER] if include_pro else [])
     price_map: Dict[str, str] = {}
-    for spec in TIERS:
+    for spec in tiers:
         tier = spec["tier"]
         # Attempt to find existing product by metadata.tier
         existing = stripe.Product.list(limit=100, active=True)
@@ -82,16 +84,18 @@ def main():
     ap.add_argument("--create", action="store_true", help="Create/reuse products and prices")
     ap.add_argument("--output", type=str, default=None, help="Path to write price map JSON")
     ap.add_argument("--print", action="store_true", help="Print existing mapping from created products/prices")
+    ap.add_argument("--api-key", type=str, default=None, help="Stripe secret key (overrides env)")
+    ap.add_argument("--include-pro", action="store_true", help="Include Pro tier (hidden by default during beta)")
     args = ap.parse_args()
 
-    api_key = os.getenv("STRIPE_API_KEY")
+    api_key = args.api_key or os.getenv("STRIPE_API_KEY") or os.getenv("STRIPE_SECRET_KEY")
     if not api_key:
-        print("STRIPE_API_KEY env var required", file=sys.stderr)
+        print("STRIPE_API_KEY or STRIPE_SECRET_KEY env var required (or pass --api-key)", file=sys.stderr)
         sys.exit(2)
     stripe.api_key = api_key
 
     if args.create:
-        mapping = ensure_products_and_prices()
+        mapping = ensure_products_and_prices(include_pro=args.include_pro)
     else:
         # Derive mapping from existing products (best effort)
         mapping = {}

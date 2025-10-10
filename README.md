@@ -123,7 +123,7 @@ Windows quick-setup (local dev):
 
 - Run `scripts\setup_billing_local.ps1` to be prompted for your Stripe secret, webhook secret (optional), and Beta price ID mapping. It will set the environment for the current PowerShell session and print a tip to start the server.
 
-3) Provisioning: Keys are provisioned manually during beta. Reply to your Stripe receipt email or email travisjohnson@oscillink.com with the receipt email you used; we’ll send your key within 24 hours.
+3) Provisioning: Automated. On successful checkout, the server provisions your API key via the Stripe webhook. Alternatively, use the CLI flow (`oscillink signup --wait`) to receive the key instantly in your terminal.
 
 4) Test: Call `POST /v1/settle` with `X-API-Key` and verify results and headers (see examples below).
 
@@ -133,13 +133,13 @@ Windows quick-setup (local dev):
 	- Beta Access ($19/mo): https://buy.stripe.com/7sY9AUbcK1if2y6d2g2VG08
 
 - During early beta (no public domain yet):
-	- We’ll provision your API key manually after payment. Reply to your Stripe receipt email or email travisjohnson@oscillink.com with the receipt email you used, and we’ll send your key within 24 hours.
+	- Your API key is provisioned automatically via webhook. If you prefer the terminal experience, run `oscillink signup --wait` to get and store your key locally.
 
 Notes for operators:
 
 - Server must have `STRIPE_SECRET_KEY` set. Optional `OSCILLINK_STRIPE_PRICE_MAP` sets price→tier mapping.
 - See docs/STRIPE_INTEGRATION.md for full details.
-- No redirect flow yet: using Stripe’s hosted confirmation page. Keys are provisioned manually from Stripe Dashboard until a public domain is live.
+- Success page is optional: webhook + CLI provisioning work without a public domain. You can enable a success page later by setting the Checkout `success_url` to `<API_BASE>/billing/success?session_id={CHECKOUT_SESSION_ID}`.
 - To enforce the beta hard cap (25M units/month), configure the monthly cap for the `beta` tier in your runtime settings; exceeding the cap returns 429 with `X-Monthly-*` headers.
 
 Cloud Run + Firestore checklist (early beta):
@@ -157,14 +157,14 @@ Cloud Run + Firestore checklist (early beta):
 	- Enable Firestore in Native mode.
 	- Service Account used by Cloud Run must have roles: Datastore User (or Firestore User). Minimal perms for collections above.
 	- No required indexes for the default code paths (point lookups by document id).
-- Webhook endpoint (optional for beta): deploy public URL and configure Stripe to call `POST /stripe/webhook` with the secret; leave disabled while keys are provisioned manually.
+- Webhook endpoint: deploy a public URL and configure Stripe to call `POST /stripe/webhook` with the secret; this enables automatic key provisioning on checkout completion.
 
 ### Automate API key provisioning after payment (optional)
 
 You can automate key creation either via a success page redirect or purely by Stripe Webhooks (or both for redundancy):
 
 - Success URL flow (requires public domain):
-	- Configure the Payment Link or Checkout Session `success_url` to `https://yourdomain.com/billing/success?session_id={CHECKOUT_SESSION_ID}`.
+	- Configure the Payment Link or Checkout Session `success_url` to `<API_BASE>/billing/success?session_id={CHECKOUT_SESSION_ID}` (set `<API_BASE>` to your deployed URL, e.g., your Cloud Run custom domain).
 	- Server verifies the session with Stripe using `STRIPE_SECRET_KEY`, generates an API key, saves `api_key → (customer_id, subscription_id)` in Firestore if `OSCILLINK_CUSTOMERS_COLLECTION` is set, and returns a confirmation page (one‑time display).
 	- Idempotency: gate on `session_id` and/or persist a provisioning record (e.g., in `OSCILLINK_WEBHOOK_EVENTS_COLLECTION`).
 
@@ -183,6 +183,67 @@ Environment recap for automation:
 - `OSCILLINK_WEBHOOK_EVENTS_COLLECTION` — Firestore store for webhook idempotency
 - `OSCILLINK_KEYSTORE_BACKEND=firestore` — enable Firestore keystore (optional; memory by default)
 
+### Sign up and get your key in the terminal (CLI flow)
+
+If you prefer to complete checkout in a browser but receive the key back in your terminal, use the built‑in CLI pairing flow. This works great in combination with the Stripe CLI during development and in production when webhooks are configured.
+
+Operator setup:
+
+- Server must have `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` set.
+- Ensure `OSCILLINK_STRIPE_PRICE_MAP` includes the desired tier (e.g., `beta`).
+
+User steps (Windows PowerShell):
+
+1) Start a CLI session to get a short code and Checkout URL:
+
+```powershell
+$resp = Invoke-RestMethod -Method POST -Uri "http://localhost:8000/billing/cli/start" -ContentType "application/json" -Body '{"tier":"beta"}'
+$resp
+# { code = "a1b2c3d4"; checkout_url = "https://checkout.stripe.com/..."; expires_in = 900 }
+```
+
+2) Open the checkout_url in your browser and complete payment.
+
+3) Poll for your key (the server provisions it on the Stripe webhook and returns it here):
+
+```powershell
+do {
+	Start-Sleep -Seconds 2
+	$poll = Invoke-RestMethod -Method GET -Uri "http://localhost:8000/billing/cli/poll/$($resp.code)"
+	$poll
+} while ($poll.status -eq "pending")
+
+if ($poll.status -eq "ready") {
+	Write-Host "Your API key:" $poll.api_key
+}
+```
+
+Notes:
+
+- The Customer Portal is for managing/canceling subscriptions after signup. The CLI flow above is for initial signup and key delivery to the terminal.
+- CLI sessions expire after 15 minutes by default (`OSCILLINK_CLI_TTL`).
+- For production, keep `OSCILLINK_ALLOW_UNVERIFIED_STRIPE` off and ensure your webhook secret is set.
+
+Domain and API base:
+
+- Set `OSCILLINK_API_BASE` to your deployed API base (Cloud Run default URL or your custom domain). All curl and Python examples use this env var to avoid hardcoding domains.
+
+Quick CLI usage (packaged):
+
+```powershell
+# Install SDK (includes the CLI entrypoint)
+pip install oscillink
+
+# Point to your cloud if different
+$env:OSCILLINK_API_BASE = "https://<YOUR_API_BASE>"
+
+# Start signup and wait for key
+oscillink signup --tier beta --wait
+
+# Later, open the billing portal
+oscillink portal
+```
+
 ### 2) Call the API
 
 Headers:
@@ -200,7 +261,7 @@ Endpoints (current versioned prefix is captured from settings; default `v1`):
 Minimal curl example:
 
 ```bash
-curl -X POST https://api.yourdomain.com/v1/settle \
+curl -X POST "$OSCILLINK_API_BASE/v1/settle" \
 	-H "X-API-Key: $YOUR_API_KEY" \
 	-H "Content-Type: application/json" \
 	-d '{
@@ -216,7 +277,7 @@ Python client snippet:
 ```python
 import os, httpx
 
-API_BASE = os.environ.get("OSCILLINK_API_BASE", "https://api.yourdomain.com")
+API_BASE = os.environ.get("OSCILLINK_API_BASE", "http://localhost:8000")
 API_KEY = os.environ["OSCILLINK_API_KEY"]
 
 payload = {
@@ -273,7 +334,7 @@ Two ways to manage billing once you have an API key:
 
 	Minimal example:
 	```bash
-	curl -X POST https://api.yourdomain.com/billing/portal \
+	curl -X POST "$OSCILLINK_API_BASE/billing/portal" \
 		-H "X-API-Key: $YOUR_API_KEY"
 	```
 
@@ -285,7 +346,7 @@ Two ways to manage billing once you have an API key:
 
 	Minimal example:
 	```bash
-	curl -X POST "https://api.yourdomain.com/admin/billing/cancel/$USER_API_KEY?immediate=false" \
+	curl -X POST "$OSCILLINK_API_BASE/admin/billing/cancel/$USER_API_KEY?immediate=false" \
 		-H "X-Admin-Secret: $OSCILLINK_ADMIN_SECRET"
 	```
 

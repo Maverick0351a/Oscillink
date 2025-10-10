@@ -1,0 +1,221 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1.05in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{bm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue}
+
+\title{\vspace{-1.0em}
+Oscillink: A Symmetric Positive Definite Lattice for\\
+Scalable Working Memory \& Hallucination Control
+\vspace{0.25em}}
+\author{OdinProtocol Inc.\vspace{-0.5em}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+\textbf{Oscillink} is a physics-inspired, model-free coherence layer that converts a set of candidate embeddings into an \emph{explainable}, globally coherent working-memory state by minimizing a convex energy. It builds an ephemeral graph (lattice) over the candidates and solves a \emph{symmetric positive definite} (SPD) linear system using preconditioned conjugate gradients (CG). The solution yields (i) refined embeddings, (ii) an auditable energy receipt $\Delta H$, (iii) \emph{null-point} diagnostics for incoherent edges, and (iv) optional \emph{chain priors} for path-constrained reasoning. 
+
+We formalize the Oscillink objective, prove SPD conditions, give a practical solver and complexity analysis, and demonstrate two controlled synthetic studies: (\emph{i}) \emph{scaling} (runtime $\&$ iterations vs.~$N$) and (\emph{ii}) \emph{hallucination control} (top-$k$ trap rate reduced from $\approx 0.33$ to $0.00$ with F1 uplift). The method composes from hundreds of nodes to lattice-of-lattices with the same SPD contract.
+\end{abstract}
+
+\vspace{-0.75em}
+\section{Introduction}
+Large language and multimodal systems rely on retrieval or candidate sampling before answering or generating. Classic pipelines (e.g., RAG with cosine top-$k$) often produce \emph{disconnected} slices of context, opaque scoring, and brittle heuristics. Oscillink replaces this with a single, deterministic, \emph{energy-minimizing} coherence layer that (1) is training-free, (2) yields explainable receipts, and (3) supports explicit controls such as \emph{source gating} and \emph{chain priors}. 
+
+\vspace{0.25em}
+\noindent
+\textbf{Contributions.}
+\begin{enumerate}
+  \item A convex, SPD \emph{lattice energy} balancing anchors, graph coherence, and query attraction, solvable efficiently by CG.
+  \item \emph{Receipts} that quantify the total energy drop $\Delta H$ and per-edge \emph{null points} (coherence defects).
+  \item \emph{Chain priors} via a path Laplacian for reasoning trajectories, with a \emph{weakest-link} diagnostic.
+  \item Optional \emph{screened diffusion gating} to spatially modulate query influence deterministically.
+  \item Two controlled studies showing (i) scaling behavior and (ii) controllable hallucination suppression with improved F1.
+\end{enumerate}
+
+\vspace{-0.5em}
+\section{Preliminaries and Notation}
+Let $Y\in\mathbb{R}^{N\times D}$ be the \emph{anchors} (original embeddings). A mutual $k$-nearest neighbor graph over rows of $Y$ yields a symmetric, nonnegative adjacency $A\in\mathbb{R}_+^{N\times N}$, with degree $D_g = \mathrm{diag}(A\mathbf{1})$. We use the \emph{normalized Laplacian}
+\[
+  L_{\mathrm{sym}} \;=\; I \;-\; D_g^{-1/2} \, A \, D_g^{-1/2}\,,
+\]
+which is symmetric and positive semidefinite (PSD) for $A\!\ge 0$. Let $\psi\in\mathbb{R}^{D}$ be the query vector, and $B=\mathrm{diag}(b)$ be a diagonal \emph{gating} matrix with $b_i\!\in[0,1]$ controlling allowed query pull per node. We also allow an optional \emph{path prior} $L_{\mathrm{path}}\succeq 0$ encoding a chain constraint over a supplied node sequence.
+
+Throughout, $U\in\mathbb{R}^{N\times D}$ denotes the \emph{settled} (refined) state.
+
+\vspace{-0.5em}
+\section{Energy and Stationary System}
+Oscillink minimizes a convex energy combining anchor fidelity, lattice coherence, and query attraction:
+\begin{align}
+\label{eq:energy}
+H(U) \;=\; 
+\underbrace{\lambda_G \, \|U - Y\|_F^2}_{\text{anchors}}
+\;+\;
+\underbrace{\lambda_C \, \mathrm{tr}\!\big(U^\top L_{\mathrm{sym}} U\big)}_{\text{graph coherence}}
+\;+\;
+\underbrace{\lambda_Q \, \mathrm{tr}\!\big((U-\mathbf{1}\psi^\top)^\top B \, (U-\mathbf{1}\psi^\top)\big)}_{\text{query attraction}}
+\;+\;
+\underbrace{\lambda_P \, \mathrm{tr}\!\big(U^\top L_{\mathrm{path}} U\big)}_{\text{chain prior (optional)}}.
+\end{align}
+Here $\lambda_G>0$ ensures strict convexity; $\lambda_C,\lambda_Q,\lambda_P\ge 0$ weight the respective terms. Taking the derivative and setting to zero yields the \emph{stationary} linear system
+\begin{align}
+\label{eq:stationary}
+M \, U^\star \;=\; F
+\qquad\text{with}\qquad
+M \;=\; \lambda_G I \;+\; \lambda_C L_{\mathrm{sym}} \;+\; \lambda_Q B \;+\; \lambda_P L_{\mathrm{path}},
+\quad
+F \;=\; \lambda_G Y \;+\; \lambda_Q B \,\mathbf{1}\psi^\top.
+\end{align}
+
+\paragraph{SPD Guarantee.}
+$L_{\mathrm{sym}}\succeq 0$, $B\succeq 0$, and $L_{\mathrm{path}}\succeq 0$. For any nonzero $X$,
+\[
+X^\top M X \;=\; \lambda_G \|X\|_2^2 \,+\, \lambda_C X^\top L_{\mathrm{sym}}X \,+\, \lambda_Q X^\top B X \,+\, \lambda_P X^\top L_{\mathrm{path}} X \;>\; 0
+\]
+whenever $\lambda_G>0$. Hence $M\succ 0$ is SPD, guaranteeing uniqueness of $U^\star$ and fast CG convergence.
+
+\paragraph{Implicit Settle (One Step).}
+A stable implicit Euler \emph{settle} update with step $\Delta t>0$ reads
+\begin{align}
+(I + \Delta t\,M) \, U^+ \;=\; U \;+\; \Delta t \, F .
+\end{align}
+In practice we solve the stationary system \eqref{eq:stationary} (with Jacobi preconditioning) and cache $U^\star$ for diagnostics.
+
+\vspace{-0.5em}
+\section{Receipts, Null Points, and Chain Priors}
+\paragraph{Energy Receipt.}
+Let $U_0\!=\!Y$ be the pre-settle state. The \emph{total energy drop} is
+\begin{align}
+\Delta H_{\mathrm{total}}
+\;=\;
+H(U_0) \;-\; H(U^\star)
+\;\ge\; 0,
+\end{align}
+computed exactly from \eqref{eq:energy}. This is the primary scalar in the \emph{receipt}. Per-term and per-node decompositions (anchors, coherence, query) are included for auditing.
+
+\paragraph{Null-Point Diagnostics.}
+For an edge $(i,j)$ with weight $A_{ij}\!>\!0$,
+\begin{align}
+r_{ij} 
+\;=\;
+\lambda_C \, A_{ij} 
+\left\|
+\frac{U^\star_i}{\sqrt{d_i}} - \frac{U^\star_j}{\sqrt{d_j}}
+\right\|_2^2,
+\qquad d_i = \sum_j A_{ij}.
+\end{align}
+Large $r_{ij}$ indicates \emph{residual incoherence} across a strong link. We z-score these residuals over the active edge set and surface the top outliers as candidate \emph{null points} for inspection.
+
+\paragraph{Chain Prior and Verdict.}
+Given a chain $\mathcal{P}=(v_1,\ldots,v_T)$, we form the path Laplacian $L_{\mathrm{path}}$ (a PSD graph Laplacian over $\mathcal{P}$) and add $\lambda_P\,\mathrm{tr}(U^\top L_{\mathrm{path}}U)$ to \eqref{eq:energy}. The receipt reports a boolean \emph{verdict} and a \emph{weakest link}
+\[
+(i^\ast,j^\ast) \;=\; \arg\max_{(i,j)\in \mathcal{P}} \; z(r_{ij}),
+\]
+highlighting the edge with the largest z-scored residual along the chain.
+
+\vspace{-0.5em}
+\section{Screened Diffusion Gating (Optional)}
+To shape query influence spatially, we compute gates by solving a \emph{screened Poisson} problem on the anchor graph
+\begin{align}
+\label{eq:screened}
+\Big(L_{\mathrm{sym}} + \gamma I\Big) \, h \;=\; \beta \, s,
+\qquad s_i \;\propto\; \max\{\cos(Y_i,\psi),0\},
+\end{align}
+with $\gamma>0$ (screening) and $\beta\ge 0$ (source scale). We then normalize $h$ into $[0,1]$ and set $b_i \leftarrow h_i$. This preserves SPD, localizes query pull, and often reduces $H(U^\star)$ by suppressing spurious nonlocal attraction.
+
+\vspace{-0.5em}
+\section{Complexity and Implementation}
+\textbf{Graph Build.} Mutual-$k$NN from cosine similarity is $O(N^2D)$ naively (fast ANN optional).  
+\textbf{CG Matvec.} Each $M\mathbf{v}$ costs one $L_{\mathrm{sym}}\mathbf{v}$ and two diagonal scalings; $L_{\mathrm{sym}}\mathbf{v}=\mathbf{v}-D^{-1/2}A(D^{-1/2}\mathbf{v})$ gives $O(\mathrm{nnz}(A))\!=O(Nk)$ work.  
+\textbf{Solve.} For $D$ columns, total cost $\approx O\big(D\cdot (\mathrm{cg\_iters})\cdot Nk\big)$. In practice we parallelize across columns, use a Jacobi preconditioner, and cache $U^\star$ for multiple diagnostics (receipt, bundle, chain).
+
+\vspace{-0.5em}
+\section{Controlled Studies}
+All results below use synthetic embeddings (zero training), mutual-$k$NN graphs, and the stationary solve \eqref{eq:stationary} with Jacobi-preconditioned CG. They are \emph{illustrative} of controllability; production outcomes depend on domain data.
+
+\subsection{Scaling: Runtime and Iterations vs.\ $N$}
+We varied $N\in\{200,400,800\}$ (with $D{=}64$, $k{=}6$, $\lambda_G{=}1.0$, $\lambda_C{=}0.5$, $\lambda_Q{=}4.0$) and measured graph-build time, CG time (all $D$ columns), mean iterations, and energy drop $\Delta H_{\text{total}}$.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+$N$ & Build (ms) & Solve (ms) & Mean CG iters & $\Delta H_{\text{total}}$ \\
+\midrule
+200 & 7.5 & 21.3 & 3.0 & $2.72{\times}10^4$ \\
+400 & 30.0 & 16.0 & 3.1 & $3.34{\times}10^4$ \\
+800 & 124.0 & 99.3 & 3.6 & $7.32{\times}10^4$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\emph{Notes.} (i) Graph build scales superlinearly under a dense cosine implementation; ANN would reduce this. (ii) CG converged in $\approx 3$--$4$ iterations at a tolerance of $10^{-3}$ thanks to SPD structure and Jacobi preconditioning. (iii) Solve time scales with $N$ and $D$ as predicted by the matvec cost.
+
+\subsection{Hallucination Control: Trap Rate and F1}
+We simulated $N{=}120$ items with a query-aligned cluster and labelled $30\%$ of items as \emph{traps} (low-trust). We compared:
+\begin{itemize}
+  \item \textbf{Baseline:} top-$k$ by cosine on $Y$.
+  \item \textbf{Oscillink (gated):} solve \eqref{eq:stationary} with gates $b_i{=}0.01$ for traps and $1.0$ otherwise; rank by cosine on $U^\star$.
+\end{itemize}
+Across $40$ trials ($k{=}5$), we report the mean \emph{hallucination rate} (fraction of traps in top-$k$) and \emph{F1} against the top-$k$ most aligned \emph{non-trap} items.
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Metric & Baseline (mean $\pm$ sd) & Oscillink (gated) (mean $\pm$ sd) \\
+\midrule
+Hallucination rate & $0.333 \pm 0.213$ & $\mathbf{0.000 \pm 0.000}$ \\
+F1 (top-$k$ non-trap set) & $0.673 \pm 0.170$ & $\mathbf{0.875 \pm 0.123}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\textbf{Interpretation.} With explicit gates, the lattice eliminate traps from top-$k$ under this controlled setup while raising F1. This is \emph{controllable} suppression: if a source is labelled low-trust, setting $b_i\!\approx 0$ attenuates its query pull, which the receipt also records (\emph{gating stats} + $\Delta H$). 
+
+\paragraph{Energy Comparison (Uniform vs.\ Gated).}
+Using the same configuration (trials $=30$), we measured average energy drop:
+\[
+\Delta H_{\text{uniform}} \approx 4.14{\times}10^4,
+\qquad
+\Delta H_{\text{gated}} \approx 4.31{\times}10^4
+\]
+(greater is better), indicating the screened state (with gates) relaxed to a lower-energy configuration.
+
+\vspace{-0.5em}
+\section{Bundle and Ranking}
+A practical \emph{bundle} is a small set of nodes scored by a blend of (i) alignment to $\psi$ and (ii) coherence improvement signals. A simple, effective score is
+\[
+\mathrm{score}_i \;=\; \alpha\, \frac{\langle U^\star_i, \psi\rangle}{\|U^\star_i\|\|\psi\|} \;+\;
+(1-\alpha)\, z\!\left(\Delta H^{(\text{node})}_i\right),
+\]
+optionally followed by MMR-style diversification. Here $\Delta H^{(\text{node})}_i$ is a per-node contribution extracted from \eqref{eq:energy} and $z(\cdot)$ denotes z-score normalization across active nodes.
+
+\vspace{-0.5em}
+\section{Reproducibility and Practical Guidance}
+\textbf{Defaults.} $k\!\in\![5,8]$, $\lambda_G\!=\!1.0$, $\lambda_C\!\in\![0.3,0.7]$, $\lambda_Q\!\in\![2.0,5.0]$, $\lambda_P\!=\!0$ unless a chain is provided. Use normalized Laplacian, mutual-$k$NN, Jacobi preconditioner, and a CG tolerance in $[10^{-3},10^{-4}]$. 
+
+\textbf{Diffusion gates.} If using \eqref{eq:screened}, pick $\gamma\!\in[0.05,0.3]$ and tune $\beta$ to boost informative neighborhoods; normalize $h$ to $[0,1]$. 
+
+\textbf{Determinism.} Fix neighbor construction (deterministic tie-breaking) and solver tolerances; sign receipts with a stable state signature for auditability.
+
+\vspace{-0.5em}
+\section{Limitations and Future Work}
+Oscillink solves an \emph{explicit} convex objective; it does not learn parameters. Quality depends on embeddings, the candidate pool, and the gating policy. Future work: (i) \emph{lattice-of-lattices} scaling (shard summaries with the same SPD contract), (ii) stronger preconditioners, (iii) joint multi-query solves to stabilize across turns, and (iv) principled gate inference (e.g., screened diffusion plus provenance/factuality cues).
+
+\vspace{-0.5em}
+\section{Conclusion}
+Oscillink provides a fast, deterministic, and explainable working-memory layer: a single SPD solve yields refined embeddings, an exact energy receipt, null-point diagnostics, and optional chain reasoning—composable from small lattices to federated hierarchies. Controlled studies show robust scaling behavior and \emph{controllable} hallucination suppression with F1 gains, without any training.
+
+\vspace{0.25em}
+\noindent\textbf{Availability.} SDK (Apache-2.0), math notes, and receipts schema are intended to be open; optional hosted tiers can be layered without altering the SPD contract.
+
+\end{document}

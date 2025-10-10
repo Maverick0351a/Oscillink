@@ -15,6 +15,7 @@ from .keystore import KeyMetadata
 # Static map (align with docs/FIRESTORE_USAGE_MODEL.md & STRIPE_INTEGRATION.md)
 TIER_FEATURES: Dict[str, Dict[str, bool]] = {
     "free": {"diffusion_gates": False, "async_jobs": True, "signed_usage": False, "priority_queue": False},
+    "beta": {"diffusion_gates": True, "async_jobs": True, "signed_usage": True, "priority_queue": False},
     "pro": {"diffusion_gates": True, "async_jobs": True, "signed_usage": True, "priority_queue": False},
     "enterprise": {"diffusion_gates": True, "async_jobs": True, "signed_usage": True, "priority_queue": True},
 }
