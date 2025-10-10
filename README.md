@@ -119,6 +119,10 @@ For the early beta (no public domain required):
 - `OSCILLINK_STRIPE_PRICE_MAP="price_live_beta_id:beta"` — map your live Beta price ID to `beta`
 - Optional for caps/portal: `OSCILLINK_MONTHLY_USAGE_COLLECTION`, `OSCILLINK_CUSTOMERS_COLLECTION`
 
+Windows quick-setup (local dev):
+
+- Run `scripts\setup_billing_local.ps1` to be prompted for your Stripe secret, webhook secret (optional), and Beta price ID mapping. It will set the environment for the current PowerShell session and print a tip to start the server.
+
 3) Provisioning: Keys are provisioned manually during beta. Reply to your Stripe receipt email or email travisjohnson@oscillink.com with the receipt email you used; we’ll send your key within 24 hours.
 
 4) Test: Call `POST /v1/settle` with `X-API-Key` and verify results and headers (see examples below).
