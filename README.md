@@ -1,4 +1,4 @@
-# Oscillink Coherent — Scalable Working Memory & Hallucination Suppression
+# Oscillink Scalable Working Memory & Hallucination Suppression
 
 <p align="center">
 	<img src="assets/oscillink_hero.svg" alt="Oscillink" width="720" />
@@ -14,7 +14,7 @@
   
 </p>
 
-## Oscillink Coherent — Scalable Working Memory & Hallucination Suppression
+## Oscillink  Scalable Working Memory & Hallucination Suppression
 
 - Attach to any generative model. Drop in after initial retrieval or candidate generation to produce an explainable, globally coherent working memory state.
 - Replace brittle RAG heuristics. Move from ad‑hoc top‑k filters to a physics‑based lattice that minimizes energy and produces signed receipts (ΔH, null points, chain verdicts).
@@ -410,6 +410,37 @@ Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F
 
 - Apache‑2.0. See `LICENSE`
 - Issues and PRs welcome. See `CONTRIBUTING.md`
+
+## Release & PyPI publishing (maintainers)
+
+We publish to PyPI through GitHub Actions. The workflow is in `.github/workflows/publish.yml` and supports both TestPyPI and PyPI.
+
+Secrets to add in the GitHub repository (Settings → Secrets and variables → Actions → New repository secret):
+
+- `TEST_PYPI_API_TOKEN` — API token from https://test.pypi.org (scoped to the `oscillink` project)
+- `PYPI_API_TOKEN` — API token from https://pypi.org (scoped to the `oscillink` project)
+
+Triggers:
+
+- Push a tag like `vX.Y.Z` → builds the package and uploads to TestPyPI
+- Publish a GitHub Release → uploads the same built artifacts to PyPI
+
+Release steps:
+
+1) Bump version in `pyproject.toml` under `[project] version = "X.Y.Z"` and commit.
+2) Create and push a tag `vX.Y.Z` to trigger TestPyPI publish. Example (PowerShell):
+
+```powershell
+git tag v0.1.6
+git push origin v0.1.6
+```
+
+3) After TestPyPI looks good, create a GitHub Release for the tag `vX.Y.Z` (via the GitHub UI). This publishes to PyPI.
+
+Notes:
+
+- The workflow uses PEP 517 builds via `python -m build` and uploads with Twine.
+- If you prefer GitHub OIDC Trusted Publishing (no API tokens), you can switch to `pypa/gh-action-pypi-publish` with `id-token: write` permissions and configure the PyPI project to trust this repo. The current setup uses tokens for simplicity.
 
 ---
 
