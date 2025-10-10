@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 from functools import lru_cache
+from importlib import import_module
+from importlib.util import find_spec
 from typing import Iterable, List
 
 import numpy as np
@@ -23,11 +25,15 @@ def simple_text_embed(texts: list[str], d: int = 384) -> np.ndarray:
 
 @lru_cache(maxsize=2)
 def _load_st_model(model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-    try:
-        from sentence_transformers import SentenceTransformer
-    except Exception:  # pragma: no cover - optional dependency
-        return None
-    try:
+    # Dynamically import sentence_transformers only if available to avoid hard import
+    # errors during static type checking or when the optional dependency isn't installed.
+    try:  # pragma: no cover - optional dependency
+        if find_spec("sentence_transformers") is None:
+            return None
+        st_mod = import_module("sentence_transformers")
+        SentenceTransformer = getattr(st_mod, "SentenceTransformer", None)
+        if SentenceTransformer is None:
+            return None
         return SentenceTransformer(model_name)
     except Exception:
         return None
