@@ -5,9 +5,9 @@ import hashlib
 import hmac
 import json
 import os
+import smtplib
 import time
 import uuid
-import smtplib
 from email.message import EmailMessage
 from typing import Any
 
