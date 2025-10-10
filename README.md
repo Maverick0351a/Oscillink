@@ -413,17 +413,16 @@ Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F
 
 ## Release & PyPI publishing (maintainers)
 
-We publish to PyPI through GitHub Actions. The workflow is in `.github/workflows/publish.yml` and supports both TestPyPI and PyPI.
+We publish to PyPI via GitHub Actions using GitHub OIDC Trusted Publishing (no API tokens). The workflow is `.github/workflows/publish.yml` and supports TestPyPI and PyPI.
 
-Secrets to add in the GitHub repository (Settings → Secrets and variables → Actions → New repository secret):
+One‑time setup (already in progress):
 
-- `TEST_PYPI_API_TOKEN` — API token from https://test.pypi.org (scoped to the `oscillink` project)
-- `PYPI_API_TOKEN` — API token from https://pypi.org (scoped to the `oscillink` project)
+- In PyPI project settings → Publishing, add a GitHub Actions trusted publisher for `Maverick0351a/Oscillink` and `.github/workflows/publish.yml`. It will show as "pending" until the first publish runs.
 
 Triggers:
 
 - Push a tag like `vX.Y.Z` → builds the package and uploads to TestPyPI
-- Publish a GitHub Release → uploads the same built artifacts to PyPI
+- Publish a GitHub Release (for the same tag) → uploads the same built artifacts to PyPI
 
 Release steps:
 
@@ -439,8 +438,8 @@ git push origin v0.1.6
 
 Notes:
 
-- The workflow uses PEP 517 builds via `python -m build` and uploads with Twine.
-- If you prefer GitHub OIDC Trusted Publishing (no API tokens), you can switch to `pypa/gh-action-pypi-publish` with `id-token: write` permissions and configure the PyPI project to trust this repo. The current setup uses tokens for simplicity.
+- The workflow builds with PEP 517 (`python -m build`) and publishes using `pypa/gh-action-pypi-publish@release/v1` via OIDC (`id-token: write`).
+- No repository secrets are required for publishing. If you want to fall back to token-based publishing, reintroduce Twine with `PYPI_API_TOKEN`/`TEST_PYPI_API_TOKEN` secrets and remove OIDC permissions.
 
 ---
 
