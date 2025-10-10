@@ -1,4 +1,4 @@
-# Oscillink — Scalable Working Memory & Hallucination Suppression for Generative Models
+# Oscillink Coherent — Scalable Working Memory & Hallucination Suppression
 
 <p align="center">
 	<img src="assets/oscillink_hero.svg" alt="Oscillink" width="720" />
@@ -14,7 +14,7 @@
   
 </p>
 
-## Oscillink Scalable Working Memory & Hallucination Suppression
+## Oscillink Coherent — Scalable Working Memory & Hallucination Suppression
 
 - Attach to any generative model. Drop in after initial retrieval or candidate generation to produce an explainable, globally coherent working memory state.
 - Replace brittle RAG heuristics. Move from ad‑hoc top‑k filters to a physics‑based lattice that minimizes energy and produces signed receipts (ΔH, null points, chain verdicts).
@@ -24,7 +24,7 @@
 ## What you get
 
 - Turn disconnected chunks into an explainable working memory, with deterministic math (SPD system)
-- Control hallucinations with diffusion gates; observed 63% → 0% hallucination rate in a controlled task
+- Control hallucinations with diffusion gates; observed 42.9% → 0.0% hallucination rate in a controlled task (Notebook 04)
 - Signed receipts: energy metrics (ΔH), per‑node components, null points for audits
 - Fast: ~10 ms settle on laptop‑scale problems (no training required)
 
@@ -76,6 +76,27 @@ lat.settle()
 ```
 
 ---
+
+## Run the server (operators)
+
+Local (dev):
+
+- Python 3.11; install dev extras and start the API:
+	- Install: `pip install -e .[dev]`
+	- Start: `uvicorn cloud.app.main:app --port 8000`
+- For local development, disable HTTPS redirect: `OSCILLINK_FORCE_HTTPS=0`.
+- Optional: set `STRIPE_SECRET_KEY` (and `STRIPE_WEBHOOK_SECRET` if testing webhooks locally via Stripe CLI).
+
+Docker:
+
+- Build with the production Dockerfile: `docker build -t oscillink-cloud -f cloud/Dockerfile .`
+- Run: `docker run -p 8000:8080 -e PORT=8080 -e OSCILLINK_FORCE_HTTPS=0 oscillink-cloud`
+
+Cloud Run (prod):
+
+- Use `cloud/Dockerfile`. Our container respects `PORT` and runs Gunicorn+Uvicorn as a non‑root user with a HEALTHCHECK.
+- Deploy with the environment variables in the checklist below (Stripe keys, price map, and optional Firestore collections).
+- Grant the service account Firestore/Datastore User as noted.
 
 ## Use the Cloud
 
@@ -133,6 +154,30 @@ Cloud Run + Firestore checklist (early beta):
 	- Service Account used by Cloud Run must have roles: Datastore User (or Firestore User). Minimal perms for collections above.
 	- No required indexes for the default code paths (point lookups by document id).
 - Webhook endpoint (optional for beta): deploy public URL and configure Stripe to call `POST /stripe/webhook` with the secret; leave disabled while keys are provisioned manually.
+
+### Automate API key provisioning after payment (optional)
+
+You can automate key creation either via a success page redirect or purely by Stripe Webhooks (or both for redundancy):
+
+- Success URL flow (requires public domain):
+	- Configure the Payment Link or Checkout Session `success_url` to `https://yourdomain.com/billing/success?session_id={CHECKOUT_SESSION_ID}`.
+	- Server verifies the session with Stripe using `STRIPE_SECRET_KEY`, generates an API key, saves `api_key → (customer_id, subscription_id)` in Firestore if `OSCILLINK_CUSTOMERS_COLLECTION` is set, and returns a confirmation page (one‑time display).
+	- Idempotency: gate on `session_id` and/or persist a provisioning record (e.g., in `OSCILLINK_WEBHOOK_EVENTS_COLLECTION`).
+
+- Webhook flow (works with or without success redirect):
+	- Set `STRIPE_WEBHOOK_SECRET` and point Stripe to `POST /stripe/webhook`.
+	- On `checkout.session.completed` (or `customer.subscription.created`), verify signature + timestamp freshness; reject stale events.
+	- Ensure idempotency by recording processed `event.id` to `OSCILLINK_WEBHOOK_EVENTS_COLLECTION` (Firestore) before provisioning.
+	- Generate an API key into your keystore (`OSCILLINK_KEYSTORE_BACKEND=firestore` recommended) and persist the customers mapping via `OSCILLINK_CUSTOMERS_COLLECTION`.
+	- Optional: email the key using your transactional email provider or provide a “retrieve key” admin workflow.
+
+Environment recap for automation:
+
+- `STRIPE_SECRET_KEY` — required to verify sessions and manage subscriptions
+- `STRIPE_WEBHOOK_SECRET` — required for secure webhook handling
+- `OSCILLINK_CUSTOMERS_COLLECTION` — Firestore mapping: `api_key → {customer_id, subscription_id}`
+- `OSCILLINK_WEBHOOK_EVENTS_COLLECTION` — Firestore store for webhook idempotency
+- `OSCILLINK_KEYSTORE_BACKEND=firestore` — enable Firestore keystore (optional; memory by default)
 
 ### 2) Call the API
 
