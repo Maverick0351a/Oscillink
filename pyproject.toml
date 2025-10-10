@@ -71,6 +71,9 @@ packages = ["oscillink", "cloud"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+exclude = [
+  "**/*.ipynb",  # exclude Jupyter notebooks from linting
+]
 
 [tool.ruff.lint]
 select = ["E","F","I","UP","B","N","SIM","C90"]
@@ -78,10 +81,16 @@ select = ["E","F","I","UP","B","N","SIM","C90"]
 ignore = [
   "N802","N803","N806",  # naming
   "N815",  # allow lamG/lamC/lamQ/lamP parameter style (domain-specific symbols)
-  "UP035","UP045","UP006","UP037",  # typing modernization / union pipe (needs py310)
-  "SIM105","SIM910"  # optional stylistic simplifications
-  ,"E501"  # allow longer lines (benchmark/log payload clarity & doc tables); revisit later
+  "UP035","UP006","UP037","UP045",  # typing modernization / union pipe (needs py310); keep Optional for py39 clarity
+  "B008",  # FastAPI Depends pattern acceptable for this project
+  "SIM105","SIM910",  # optional stylistic simplifications
+  "E501"  # allow longer lines (benchmark/log payload clarity & doc tables); revisit later
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"notebooks/*.ipynb" = ["E402","E741","F401","F821","F811"]
+"scripts/benchmark.py" = ["C901"]
+"scripts/proof_hallucination.py" = ["C901"]
 
 [tool.mypy]
 python_version = "3.9"

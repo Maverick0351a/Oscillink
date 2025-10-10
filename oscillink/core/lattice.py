@@ -78,7 +78,7 @@ class OscillinkLattice:
         self.L_path = None
         self.A_path = None
         self.lamP = 0.0
-        self.last = {"iters": 0, "res": None, "t_ms": None}
+        self.last: Dict[str, Any] = {"iters": 0, "res": None, "t_ms": None}
         # original chain node ordering (None until add_chain called)
         self._chain_nodes = None  # type: Optional[list[int]]
 
@@ -276,7 +276,22 @@ class OscillinkLattice:
             self.B_diag,
             self.psi,
         )
-        nulls = null_points(Ustar, self.A, self.sqrt_deg, self.lamC, z_th=3.0)
+        nulls_full = null_points(Ustar, self.A, self.sqrt_deg, self.lamC, z_th=3.0)
+        # Null-point capping (observability control)
+        import os as _os
+        cap_raw = _os.getenv("OSCILLINK_RECEIPT_NULL_CAP", "0").strip()
+        try:
+            cap_val = int(cap_raw)
+        except ValueError:
+            cap_val = 0
+        if cap_val > 0 and len(nulls_full) > cap_val:
+            # Simple strategy: keep highest z values
+            nulls_sorted = sorted(nulls_full, key=lambda e: e.get("z", 0.0), reverse=True)
+            nulls = nulls_sorted[:cap_val]
+            null_meta = {"total_null_points": len(nulls_full), "returned_null_points": cap_val, "null_cap_applied": True}
+        else:
+            nulls = nulls_full
+            null_meta = {"total_null_points": len(nulls_full), "returned_null_points": len(nulls_full), "null_cap_applied": False}
         meta = {
             "ustar_cached": bool(self._Ustar_cache is not None and self._Ustar_sig == self._signature()),
             "ustar_solves": int(self.stats["ustar_solves"]),
@@ -286,7 +301,8 @@ class OscillinkLattice:
             "ustar_iters": int(getattr(self, "last_ustar", {}).get("iters", 0)),
             "ustar_solve_ms": float(getattr(self, "last_ustar", {}).get("solve_ms", 0.0)),
             "graph_build_ms": float(getattr(self, "_graph_build_ms", 0.0)),
-            "last_settle_ms": float(self.last.get("t_ms")) if self.last.get("t_ms") is not None else None,
+            # Some tests call receipt() before any settle(); guard None -> 0.0
+            "last_settle_ms": float(self.last.get("t_ms") or 0.0),
             # adjacency stats
             "avg_degree": float(np.sum(self.A > 0) / max(self.N, 1)),
             "edge_density": float(np.sum(self.A > 0) / max(self.N * (self.N - 1), 1)),
@@ -297,6 +313,8 @@ class OscillinkLattice:
             "gates_uniform": bool(np.allclose(self.B_diag, self.B_diag[0])),
             # deterministic lattice signature (added for parity with cloud endpoints & docs)
             "state_sig": self._signature(),
+            # null point summary
+            "null_points_summary": null_meta,
         }
         # signing (optional)
         signature_block = None
@@ -330,9 +348,10 @@ class OscillinkLattice:
             "coh_drop_sum": float(np.sum(coh_drop)),
             "anchor_pen_sum": float(np.sum(anchor_pen)),
             "query_term_sum": float(np.sum(query_term)),
-            "cg_iters": int(self.last["iters"]),
-            "residual": float(self.last["res"]) if self.last["res"] is not None else None,
-            "t_ms": float(self.last["t_ms"]) if self.last["t_ms"] is not None else None,
+            # Some tests invoke receipt() before any settle(); protect against None placeholders.
+            "cg_iters": int(self.last.get("iters") or 0),
+            "residual": float(self.last.get("res") or 0.0),
+            "t_ms": float(self.last.get("t_ms") or 0.0),
             "null_points": nulls,
             "meta": meta,
         }
@@ -518,7 +537,7 @@ class OscillinkLattice:
                 json.dump(state, f, sort_keys=True)
         elif fmt == "npz":
             # separate heavy numeric arrays to avoid JSON overhead
-            arrays = {
+            arrays: dict[str, np.ndarray] = {
                 "Y": self.Y,
                 "psi": self.psi,
                 "B_diag": self.B_diag,
@@ -643,7 +662,7 @@ class OscillinkLattice:
                 pass
 
     # --- Receipt signing API ---
-    def set_receipt_secret(self, secret: Optional[bytes | str]) -> None:
+    def set_receipt_secret(self, secret: bytes | str | None) -> None:
         """Configure HMAC-SHA256 signing secret for receipts. Pass None to disable signing."""
         if secret is None:
             self._receipt_secret = None

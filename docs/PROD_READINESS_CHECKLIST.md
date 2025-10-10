@@ -4,15 +4,16 @@
 
 ## High Priority
 
-- [ ] Add `state_sig` to receipt meta (consistency with cloud & docs)
+- [x] Add `state_sig` to receipt meta (consistency with cloud & docs)
 - [ ] Preserve adjacency symmetry after row cap (ensure SPD assumptions)
 - [ ] Fix deterministic neighbor sort tie-break (index ascending)
 - [ ] Reorder monthly cap + quota checks before compute in all endpoints (`/v1/receipt`, `/v1/bundle`, `/v1/chain/receipt`)
-- [ ] Harden Stripe webhook (ignore tier mutations without verified signature unless explicitly allowed by `OSCILLINK_ALLOW_UNVERIFIED_STRIPE=1`)
+- [x] Harden Stripe webhook (ignore tier mutations without verified signature unless explicitly allowed by `OSCILLINK_ALLOW_UNVERIFIED_STRIPE=1`)
 - [ ] Fix extras recursion: replace `cloud-all` self reference with explicit union list
 - [ ] Guard usage log directory creation (skip `os.makedirs` on empty dir path)
 - [ ] Clamp `kneighbors` inside `OscillinkLattice` (`1 <= k <= N-1`)
-- [ ] Update README env var table (add `OSCILLINK_MONTHLY_USAGE_COLLECTION`, `OSCILLINK_ALLOW_UNVERIFIED_STRIPE`) + signature requirement note
+- [x] Update README env var table (add `OSCILLINK_MONTHLY_USAGE_COLLECTION`, `OSCILLINK_ALLOW_UNVERIFIED_STRIPE`) + signature requirement note
+- [x] Add null-point capping env var (`OSCILLINK_RECEIPT_NULL_CAP`) + meta summary
 
 ## Medium Priority
 

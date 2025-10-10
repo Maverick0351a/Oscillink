@@ -90,4 +90,3 @@ Format loosely follows Keep a Changelog. While < 1.0.0, minor version bumps MAY 
 
 ## [0.1.0] - 2025-10-01
 Initial scaffold release (core lattice construction, settle solver, receipts, chain receipt, bundle API endpoints, basic governance: API key auth, rate limiting, per-key quota, Prometheus metrics, usage logging foundation).
-

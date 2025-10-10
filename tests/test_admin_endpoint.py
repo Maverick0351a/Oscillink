@@ -1,8 +1,7 @@
-import os
 import pytest
 from fastapi.testclient import TestClient
 
-from cloud.app.main import app, get_keystore
+from cloud.app.main import app
 
 
 @pytest.fixture(autouse=True)

@@ -1,5 +1,7 @@
 import numpy as np
+
 from oscillink import OscillinkLattice, compute_diffusion_gates
+
 
 def test_receipt_gating_stats_uniform():
     rng = np.random.default_rng(1)

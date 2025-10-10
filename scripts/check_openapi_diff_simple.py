@@ -8,8 +8,12 @@ Exits non-zero if a path+method present in prev is missing in current (breaking)
 Add --allow-removed PATH1,PATH2 to tolerate specific removals.
 """
 from __future__ import annotations
-import argparse, json, sys
+
+import argparse
+import json
+import sys
 from pathlib import Path
+
 
 def load(p: Path):
     with p.open('r', encoding='utf-8') as f:
@@ -25,12 +29,12 @@ def main():
     cur = load(args.current)
     allow = {s.strip() for s in args.allow_removed.split(',') if s.strip()}
     missing = []
-    for path, ops in prev.get('paths', {}).items():
+    for path, _ops in prev.get('paths', {}).items():
         if path not in cur.get('paths', {}):
             if path not in allow:
                 missing.append(path)
             continue
-        for method in ops.keys():
+    for method in _ops:
             if method not in cur['paths'][path]:
                 combo = f"{path}:{method}"
                 if combo not in allow:

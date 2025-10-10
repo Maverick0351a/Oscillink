@@ -1,11 +1,10 @@
-import os
 import json
+
 import numpy as np
-import importlib
 from fastapi.testclient import TestClient
 
-from oscillink import OscillinkLattice
 from cloud.app.main import app
+from oscillink import OscillinkLattice
 
 
 def test_state_sig_in_receipt_meta():
@@ -62,4 +61,3 @@ def test_webhook_unverified_override_allows_processing(monkeypatch):
     assert body['processed'] is True
     assert body.get('verified') is False
     assert body.get('allow_unverified_override') is True
-

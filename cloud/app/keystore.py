@@ -7,16 +7,17 @@ handlers or quota logic.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, Optional, Any
 import os
 import time
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
+
 
 @dataclass
 class KeyMetadata:
     api_key: str
     tier: str = "free"
-    status: str = "active"  # active|revoked|suspended
+    status: str = "active"  # active|pending|revoked|suspended
     quota_limit_units: Optional[int] = None  # override (N*D units per window)
     quota_window_seconds: Optional[int] = None
     features: Dict[str, bool] = field(default_factory=dict)
@@ -155,8 +156,18 @@ def get_keystore() -> KeyStore:
     global _key_store
     if _key_store is None:
         backend = os.getenv("OSCILLINK_KEYSTORE_BACKEND", "memory").lower()
-        if backend == "firestore":
-            _key_store = FirestoreKeyStore()
-        else:
-            _key_store = InMemoryKeyStore()
+        _key_store = FirestoreKeyStore() if backend == "firestore" else InMemoryKeyStore()
     return _key_store
+
+# --- Tier / Feature Mutation Helpers (for Stripe or admin paths) ---
+
+def update_key_tier(api_key: str, tier: str, *, create: bool = False) -> KeyMetadata | None:
+    """Update (or create) a key's tier and touch updated_at.
+
+    Does NOT adjust feature flags directly; feature resolution layer should map tier -> features.
+    Returns updated metadata or None if key absent and create=False.
+    """
+    ks = get_keystore()
+    meta = ks.update(api_key, create=create, tier=tier)
+    return meta
+

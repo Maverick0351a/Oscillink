@@ -1,5 +1,7 @@
 import numpy as np
+
 from oscillink import OscillinkLattice, verify_receipt_mode
+
 
 def test_signature_version_minimal():
     Y = np.random.default_rng(0).normal(size=(10,4)).astype(np.float32)

@@ -150,10 +150,7 @@ def verify_receipt_mode(
             return False, None
         if required_sig_v is not None and payload.get("sig_v") != required_sig_v:
             return False, None
-        if isinstance(secret, str):
-            secret_b = secret.encode("utf-8")
-        else:
-            secret_b = secret
+        secret_b = secret.encode("utf-8") if isinstance(secret, str) else secret
         raw = json.dumps(payload, sort_keys=True).encode("utf-8")
         calc = hmac.new(secret_b, raw, hashlib.sha256).hexdigest()
         if hmac.compare_digest(calc, str(sig_hex)):

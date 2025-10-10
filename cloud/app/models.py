@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, conlist
+from pydantic import BaseModel, Field
 
 
 class Params(BaseModel):

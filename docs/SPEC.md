@@ -3,7 +3,7 @@
 **Energy (per lattice)**
 
 \[
-H(U)=\lambda_G\,\|U-Y\|_F^2 + \lambda_C\,\mathrm{tr}(U^\top L_{\mathrm{sym}}U) + 
+H(U)=\lambda_G\,\|U-Y\|_F^2 + \lambda_C\,\mathrm{tr}(U^\top L_{\mathrm{sym}}U) +
 \lambda_Q\,\mathrm{tr}((U-\mathbf{1}\psi^\top)^\top B (U-\mathbf{1}\psi^\top)) + \lambda_P\,\mathrm{tr}(U^\top L_{\text{path}}U)
 \]
 

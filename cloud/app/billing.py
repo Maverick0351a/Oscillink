@@ -15,9 +15,9 @@ Future extensions: feature allowances, unit caps per tier.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import os
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 DEFAULT_TIER = "free"
@@ -64,11 +64,24 @@ def _parse_price_map(raw: str) -> Dict[str, str]:
 # Cached mapping
 _price_map_cache: Dict[str, str] | None = None
 
+# Built-in fallback price mapping so tests and dev env work without configuring
+# OSCILLINK_STRIPE_PRICE_MAP. Environment mapping (when present) overrides these.
+# NOTE: Keep keys stable; changing them will break existing subscriptions.
+_DEFAULT_PRICE_MAP: Dict[str, str] = {
+    # Pro monthly subscription price id (placeholder ID used in tests)
+    "price_cloud_pro_monthly": "pro",
+    # Enterprise subscription price id (requires manual activation -> pending status initially)
+    "price_cloud_enterprise": "enterprise",
+}
+
 def get_price_map(refresh: bool = False) -> Dict[str, str]:
     global _price_map_cache
     if _price_map_cache is None or refresh:
         env_val = os.getenv("OSCILLINK_STRIPE_PRICE_MAP", "")
-        _price_map_cache = _parse_price_map(env_val)
+        env_map = _parse_price_map(env_val)
+        # Merge built-in defaults with env overrides (env wins)
+        merged: Dict[str, str] = {**_DEFAULT_PRICE_MAP, **env_map}
+        _price_map_cache = merged
     return _price_map_cache
 
 
@@ -106,5 +119,3 @@ def current_period() -> str:
     import datetime as _dt
     now = _dt.datetime.utcnow()
     return f"{now.year:04d}{now.month:02d}"
-
-

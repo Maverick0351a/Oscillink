@@ -1,5 +1,7 @@
-from oscillink import OscillinkLattice, verify_receipt_mode
 import numpy as np
+
+from oscillink import OscillinkLattice, verify_receipt_mode
+
 
 def test_verify_receipt_mode_import_and_usage():
     Y = np.random.default_rng(0).normal(size=(6,4)).astype(np.float32)

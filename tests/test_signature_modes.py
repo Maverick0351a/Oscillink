@@ -1,14 +1,11 @@
-import os
 import numpy as np
+
 from oscillink.core.lattice import OscillinkLattice
 from oscillink.core.receipts import verify_receipt
 
 
 def make_lat(seed=None):
-    if seed is not None:
-        rng = np.random.default_rng(seed)
-    else:
-        rng = np.random.default_rng(0)
+    rng = np.random.default_rng(seed) if seed is not None else np.random.default_rng(0)
     Y = rng.normal(size=(18, 6)).astype(np.float32)
     lat = OscillinkLattice(Y, kneighbors=5, deterministic_k=True, neighbor_seed=123)
     lat.set_query(rng.normal(size=6).astype(np.float32))

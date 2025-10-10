@@ -15,7 +15,7 @@ Status: Draft (Should). Align product & price IDs before coding.
 Price metadata should include: `tier=free|pro|enterprise`.
 
 ## Customer -> API Key Association
-Option A: Store `api_key_hash` in Stripe Customer metadata (preferred).  
+Option A: Store `api_key_hash` in Stripe Customer metadata (preferred).
 Option B: Maintain mapping collection `stripe_customers/{customer_id}` referencing key hash(es).
 
 Provisioning flow: when a Pro subscription is created, if customer lacks key, generate one and email customer using transactional template (out of scope; could store placeholder until manual approval for enterprise).

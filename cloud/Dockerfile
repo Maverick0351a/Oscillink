@@ -11,7 +11,8 @@ COPY pyproject.toml README.md ./
 COPY oscillink ./oscillink
 COPY cloud ./cloud
 
-RUN pip install --upgrade pip && pip install .[cloud]
+RUN pip install --upgrade pip && pip install .[cloud-all]
 
-EXPOSE 8000
-CMD ["uvicorn", "cloud.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENV PORT=8000
+EXPOSE ${PORT}
+CMD ["bash", "-lc", "uvicorn cloud.app.main:app --host 0.0.0.0 --port ${PORT}"]

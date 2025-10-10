@@ -7,7 +7,9 @@ Simple static mapping plus a resolver that merges:
 Future: dynamic override doc in Firestore.
 """
 from __future__ import annotations
+
 from typing import Dict
+
 from .keystore import KeyMetadata
 
 # Static map (align with docs/FIRESTORE_USAGE_MODEL.md & STRIPE_INTEGRATION.md)

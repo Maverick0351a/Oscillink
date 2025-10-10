@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
+
 from cloud.app.main import app
+
 
 def test_openapi_contains_core_paths():
     client = TestClient(app)

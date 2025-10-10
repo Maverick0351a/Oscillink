@@ -48,4 +48,3 @@ def test_diffusion_gates_determinism_seed():
     g2 = compute_diffusion_gates(Y, psi, kneighbors=5, neighbor_seed=555)
     # Seeded tie-breaking should yield identical outputs
     assert np.allclose(g1, g2)
-

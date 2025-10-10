@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+
 from fastapi.testclient import TestClient
+
 from cloud.app.main import app
 
 client = TestClient(app)

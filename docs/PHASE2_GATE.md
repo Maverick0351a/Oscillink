@@ -20,7 +20,7 @@ Ensure core semantics are stable and observable before adding higher-level featu
 ### 3. Governance & Limits
 - [ ] Rate limiting and quota behavior documented (README) with single-process scope disclaimers.
 - [ ] Quota & rate headers verified in integration tests.
-- [ ] Usage logging path & optional HMAC signature validated manually (sample log with signature). 
+- [ ] Usage logging path & optional HMAC signature validated manually (sample log with signature).
 
 ### 4. Observability
 - [ ] Prometheus metrics namespace stable (no renames without deprecation entry).
@@ -56,4 +56,3 @@ Phase 2 work may begin when all non-deferred checklist items are checked AND at 
 
 ## Rationale
 Locking core semantics early minimizes migration churn and clarifies which surfaces are safe to build upon externally.
-

@@ -35,4 +35,3 @@ def test_set_gates_and_invalid_length():
     assert np.allclose(lat.B_diag, gates)
     with pytest.raises(ValueError):
         lat.set_gates(np.ones(5, dtype=np.float32))  # wrong length
-

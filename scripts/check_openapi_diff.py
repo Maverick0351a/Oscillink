@@ -9,10 +9,12 @@ Exit codes:
  2 = Breaking change detected
 """
 from __future__ import annotations
-import json
+
 import argparse
+import json
 import sys
 from pathlib import Path
+
 
 def flatten_keys(obj, prefix=""):
     keys = set()

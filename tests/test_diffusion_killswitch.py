@@ -1,12 +1,17 @@
-import os
 import importlib
+import os
+
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient  # type: ignore
 
 # Skip if fastapi/cloud app not available
-pytestmark = pytest.mark.skipif(not os.environ.get('CI') and 'fastapi' not in importlib.util.find_spec('fastapi').name, reason='fastapi not installed') if importlib.util.find_spec('fastapi') is None else []  # type: ignore
-
-from fastapi.testclient import TestClient  # type: ignore
+pytestmark = (
+    pytest.mark.skipif(
+        not os.environ.get('CI') and 'fastapi' not in importlib.util.find_spec('fastapi').name,
+        reason='fastapi not installed'
+    ) if importlib.util.find_spec('fastapi') is None else []  # type: ignore
+)
 
 # Import after setting env in individual tests
 

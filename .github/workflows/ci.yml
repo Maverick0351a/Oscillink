@@ -31,7 +31,7 @@ jobs:
           # Attempt to download previous schema artifact from base branch latest workflow run
           echo "Attempting to fetch previous OpenAPI schema artifact (best-effort)"
           echo "Not implemented: requires additional permissions or artifact retention strategy"
-          echo "Skipping fetch; using current schema as prev fallback" 
+          echo "Skipping fetch; using current schema as prev fallback"
           cp openapi.json prev_openapi.json
       - name: OpenAPI breaking change check
         if: github.event_name == 'pull_request'

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+
 import numpy as np
 
 from oscillink import OscillinkLattice, compute_diffusion_gates
@@ -30,17 +31,34 @@ def run_once(N: int, D: int, kneighbors: int, beta: float, gamma: float, bundle_
     # Uniform
     lat_u = OscillinkLattice(Y, kneighbors=kneighbors)
     lat_u.set_query(psi)
-    t0 = time.time(); lat_u.settle(); settle_u_ms = 1000.0 * (time.time() - t0)
-    t1 = time.time(); rec_u = lat_u.receipt(); receipt_u_ms = 1000.0 * (time.time() - t1)
+    t0 = time.time()
+    lat_u.settle()
+    settle_u_ms = 1000.0 * (time.time() - t0)
+    t1 = time.time()
+    rec_u = lat_u.receipt()
+    receipt_u_ms = 1000.0 * (time.time() - t1)
     bundle_u = lat_u.bundle(k=bundle_k)
     mean_align_u = float(np.mean([b['align'] for b in bundle_u])) if bundle_u else 0.0
 
     # Diffusion
-    t2 = time.time(); gates = compute_diffusion_gates(Y, psi, kneighbors=kneighbors, beta=beta, gamma=gamma, neighbor_seed=seed); gate_ms = 1000.0 * (time.time() - t2)
+    t2 = time.time()
+    gates = compute_diffusion_gates(
+        Y,
+        psi,
+        kneighbors=kneighbors,
+        beta=beta,
+        gamma=gamma,
+        neighbor_seed=seed,
+    )
+    gate_ms = 1000.0 * (time.time() - t2)
     lat_d = OscillinkLattice(Y, kneighbors=kneighbors)
     lat_d.set_query(psi, gates=gates)
-    t3 = time.time(); lat_d.settle(); settle_d_ms = 1000.0 * (time.time() - t3)
-    t4 = time.time(); rec_d = lat_d.receipt(); receipt_d_ms = 1000.0 * (time.time() - t4)
+    t3 = time.time()
+    lat_d.settle()
+    settle_d_ms = 1000.0 * (time.time() - t3)
+    t4 = time.time()
+    rec_d = lat_d.receipt()
+    receipt_d_ms = 1000.0 * (time.time() - t4)
     bundle_d = lat_d.bundle(k=bundle_k)
     mean_align_d = float(np.mean([b['align'] for b in bundle_d])) if bundle_d else 0.0
 

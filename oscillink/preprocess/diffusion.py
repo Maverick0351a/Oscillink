@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Screened diffusion based gate preprocessor.
 
 This module provides an optional physics‑inspired preprocessing step that derives
@@ -26,11 +24,11 @@ Design notes
 - Keeps dependencies minimal (pure NumPy); system is SPD so direct solve via `np.linalg.solve` is stable
   for moderate N (phase‑1 target sizes). For very large N, an iterative CG could be substituted.
 """
-from typing import Optional
 
-import numpy as np
-
-from ..core.graph import mutual_knn_adj, normalized_laplacian, row_sum_cap
+from __future__ import annotations  # noqa: I001
+from typing import Optional  # noqa: I001
+import numpy as np  # noqa: I001
+from ..core.graph import mutual_knn_adj, normalized_laplacian, row_sum_cap  # noqa: I001
 
 
 def compute_diffusion_gates(
@@ -125,10 +123,7 @@ def compute_diffusion_gates(
     if clamp:
         h_min = float(np.min(h))
         h_max = float(np.max(h))
-        if h_max - h_min < 1e-12:
-            h = np.ones(N, dtype=np.float32)
-        else:
-            h = (h - h_min) / (h_max - h_min)
+        h = np.ones(N, dtype=np.float32) if h_max - h_min < 1e-12 else (h - h_min) / (h_max - h_min)
     h = np.clip(h, 0.0, 1.0).astype(np.float32)
     return h
 

@@ -1,6 +1,9 @@
 import time
+
 import numpy as np
+
 from oscillink.core.lattice import OscillinkLattice
+
 
 def test_perf_smoke_small():
     # Not a strict performance assertion: just ensures settle + receipt runs under a loose ceiling.

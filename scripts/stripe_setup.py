@@ -32,9 +32,11 @@ TIERS = [
 ]
 
 
-def ensure_products_and_prices(live: bool = False) -> Dict[str, str]:
-    """Create or reuse products+prices; return price_id -> tier mapping."""
-    mode = "live" if live else "test"
+def ensure_products_and_prices(live: bool = False) -> Dict[str, str]:  # noqa: C901
+    """Create or reuse products+prices; return price_id -> tier mapping.
+
+    Complexity acceptable for now (Stripe API orchestration); suppressed with noqa.
+    """
     price_map: Dict[str, str] = {}
     for spec in TIERS:
         tier = spec["tier"]
@@ -103,7 +105,7 @@ def main():
                 if pr.metadata.get("tier") == t:
                     mapping[pr.id] = t
                     break
-    if args.print or True:
+    if True:
         print(json.dumps(mapping, indent=2))
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:

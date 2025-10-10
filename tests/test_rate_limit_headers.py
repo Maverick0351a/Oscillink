@@ -1,6 +1,8 @@
-import numpy as np
 from importlib import reload
+
+import numpy as np
 from fastapi.testclient import TestClient
+
 
 def _reload_app():
     from cloud.app import main as mainmod

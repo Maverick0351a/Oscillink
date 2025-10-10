@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 
-def cg_solve(A_mul, b: np.ndarray, x0: np.ndarray | None = None, 
+def cg_solve(A_mul, b: np.ndarray, x0: np.ndarray | None = None,
              M_diag: np.ndarray | None = None, tol: float = 1e-3, max_iters: int = 100):
     """Conjugate Gradient for (symmetric) linear operator A_mul. Works for multiple RHS (N x D)."""
     if b.ndim == 1:
