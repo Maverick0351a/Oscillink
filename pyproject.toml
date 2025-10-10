@@ -96,3 +96,12 @@ ignore = [
 python_version = "3.9"
 warn_unused_ignores = true
 pretty = true
+
+[[tool.mypy.overrides]]
+# sentence-transformers is an optional runtime dependency for embeddings; we fall back when absent.
+# In CI we don't install it, so silence missing type stub/library errors for this module only.
+module = [
+  "sentence_transformers",
+  "sentence_transformers.*",
+]
+ignore_missing_imports = true
