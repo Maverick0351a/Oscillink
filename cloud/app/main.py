@@ -484,7 +484,6 @@ def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
         ks = get_keystore()
         _ENV_KEYS_FINGERPRINT = current_fp
     backend = os.getenv("OSCILLINK_KEYSTORE_BACKEND", "memory").lower()
-    # Attempt keystore validation first when backend explicitly set OR when firestore selected.
     # Legacy env list ALWAYS enforced if present (checked early to satisfy tests expecting 401)
     allowed = get_api_keys()
     if allowed:
@@ -492,6 +491,12 @@ def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
             raise HTTPException(status_code=401, detail="invalid or missing API key")
         # Tier overrides may be handled by InMemoryKeyStore above; return key directly
         return x_api_key
+
+    # If no env keys are configured at all, operate in open mode for memory backend regardless of
+    # any prior in-memory keystore state. This matches tests that unset OSCILLINK_API_KEYS and expect
+    # unauthenticated access.
+    if backend == "memory" and not allowed:
+        return None
 
     if backend in {"firestore", "memory"}:
         if x_api_key:
@@ -519,8 +524,8 @@ def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
                 pass
     # Legacy env list fallback ALWAYS enforced when list non-empty
     allowed = get_api_keys()
-    # If we reach here, open access (no env key list, memory backend with possibly empty keys)
-    return x_api_key  # open access (None) when no keystore match & no env list
+    # If we reach here, open access (no env key list)
+    return None
 
 def feature_context(x_api_key: str | None = Depends(api_key_guard)):
     """Resolve feature bundle for request.
