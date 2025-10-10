@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+# Standard library
 import hashlib
 import hmac
 import json
 import os
 import time
 import uuid
+import smtplib
+from email.message import EmailMessage
+from typing import Any
 
+# Third-party
 import numpy as np
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import ORJSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, ORJSONResponse
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -18,6 +24,8 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from oscillink import OscillinkLattice, __version__
 
@@ -32,9 +40,31 @@ from .config import get_settings
 from .features import resolve_features
 from .keystore import InMemoryKeyStore, KeyMetadata, get_keystore  # type: ignore
 from .models import AdminKeyResponse, AdminKeyUpdate, HealthResponse, ReceiptResponse, SettleRequest
+from .redis_backend import get_with_ttl, incr_with_window, redis_enabled, set_with_ttl
 from .runtime_config import get_api_keys, get_quota_config, get_rate_limit
 
 app = FastAPI(title="Oscillink Cloud API", default_response_class=ORJSONResponse)
+
+# --- Security & Ops Middlewares (configurable via env) ---
+_ALLOW_ORIGINS = os.getenv("OSCILLINK_CORS_ALLOW_ORIGINS", "").strip()
+_TRUSTED_HOSTS = os.getenv("OSCILLINK_TRUSTED_HOSTS", "").strip()  # e.g. "api.example.com,.example.com"
+_FORCE_HTTPS = os.getenv("OSCILLINK_FORCE_HTTPS", "0") in {"1", "true", "TRUE", "on"}
+
+if _ALLOW_ORIGINS:
+    origins = [o.strip() for o in _ALLOW_ORIGINS.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["POST", "GET", "OPTIONS", "DELETE"],
+        allow_headers=["*"],
+        max_age=600,
+    )
+if _TRUSTED_HOSTS:
+    hosts = [h.strip() for h in _TRUSTED_HOSTS.split(",") if h.strip()]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+if _FORCE_HTTPS:
+    app.add_middleware(HTTPSRedirectMiddleware)
 
 MAX_BODY_BYTES = int(os.getenv("OSCILLINK_MAX_BODY_BYTES", "1048576"))  # 1MB default
 
@@ -57,6 +87,15 @@ async def body_size_guard(request: Request, call_next):
 REQUEST_ID_HEADER = "x-request-id"
 
 # Prometheus metrics (guard against re-registration during test reloads)
+SETTLE_COUNTER: Any
+SETTLE_LATENCY: Any
+SETTLE_N_GAUGE: Any
+SETTLE_D_GAUGE: Any
+USAGE_NODES: Any
+USAGE_NODE_DIM_UNITS: Any
+JOB_QUEUE_DEPTH: Any
+STRIPE_WEBHOOK_EVENTS: Any
+
 if "oscillink_settle_requests_total" in REGISTRY._names_to_collectors:  # type: ignore[attr-defined]
     SETTLE_COUNTER = REGISTRY._names_to_collectors["oscillink_settle_requests_total"]  # type: ignore
     SETTLE_LATENCY = REGISTRY._names_to_collectors["oscillink_settle_latency_seconds"]  # type: ignore
@@ -65,6 +104,12 @@ if "oscillink_settle_requests_total" in REGISTRY._names_to_collectors:  # type: 
     USAGE_NODES = REGISTRY._names_to_collectors["oscillink_usage_nodes_total"]  # type: ignore
     USAGE_NODE_DIM_UNITS = REGISTRY._names_to_collectors["oscillink_usage_node_dim_units_total"]  # type: ignore
     JOB_QUEUE_DEPTH = REGISTRY._names_to_collectors.get("oscillink_job_queue_depth")  # type: ignore
+    if "oscillink_stripe_webhook_events_total" in REGISTRY._names_to_collectors:  # type: ignore[attr-defined]
+        STRIPE_WEBHOOK_EVENTS = REGISTRY._names_to_collectors["oscillink_stripe_webhook_events_total"]  # type: ignore
+    else:
+        STRIPE_WEBHOOK_EVENTS = Counter(
+            "oscillink_stripe_webhook_events_total", "Stripe webhook events", ["result"]
+        )
 else:
     SETTLE_COUNTER = Counter(
         "oscillink_settle_requests_total", "Total settle requests", ["status"]
@@ -236,6 +281,20 @@ async def add_request_id(request: Request, call_next):
     response.headers[REQUEST_ID_HEADER] = rid
     return response
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Set basic security headers on every response.
+
+    CSP is intentionally omitted globally; applied only on the HTML success page. Add selectively if needed.
+    """
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    return resp
+
 # ---------------- Per-IP Rate Limiting (in-memory) -----------------
 _ip_rl_counters: dict[str, dict[str, float]] = {}
 
@@ -280,6 +339,28 @@ async def per_ip_rate_limit_mw(request: Request, call_next):
         return await call_next(request)
     now = time.time()
     ip = _client_ip(request, trust_xff)
+    if redis_enabled():
+        key = f"iprl:{ip}:{window}"
+        count, ttl = incr_with_window(key, window, amount=1)
+        # When Redis not reachable, incr_with_window returns (0, -2); fall back to memory path
+        if ttl != -2:
+            if count > limit:
+                reset_at = int(now + (ttl if ttl >= 0 else window))
+                headers = {
+                    "Retry-After": str(int(max(reset_at - now, 0)) + 1),
+                    "X-IPLimit-Limit": str(limit),
+                    "X-IPLimit-Remaining": "0",
+                    "X-IPLimit-Reset": str(reset_at),
+                }
+                return ORJSONResponse(status_code=429, content={"detail": "ip rate limit exceeded"}, headers=headers)
+            response = await call_next(request)
+            remaining = max(limit - int(count), 0)
+            reset_at = int(now + (ttl if ttl >= 0 else window))
+            response.headers.setdefault("X-IPLimit-Limit", str(limit))
+            response.headers.setdefault("X-IPLimit-Remaining", str(remaining))
+            response.headers.setdefault("X-IPLimit-Reset", str(reset_at))
+            return response
+    # Fallback to in-memory counters
     rec = _ip_rl_counters.get(ip)
     if not rec or now - rec["window_start"] >= window or rec.get("limit") != float(limit) or rec.get("window") != float(window):
         rec = {"window_start": now, "count": 0.0, "limit": float(limit), "window": float(window)}
@@ -311,6 +392,26 @@ async def rate_limit_mw(request: Request, call_next):
     if _rl_state["limit"] <= 0:
         return await call_next(request)
     now = time.time()
+    if redis_enabled():
+        key = f"grl:{_rl_state['window']}"
+        count, ttl = incr_with_window(key, _rl_state["window"], amount=1)
+        if request.url.path not in ("/health", "/metrics") and count > _rl_state["limit"] and ttl != -2:
+            reset_at = int(now + (ttl if ttl >= 0 else _rl_state["window"]))
+            headers = {
+                "Retry-After": str(int(max(reset_at - now, 0)) + 1),
+                "X-RateLimit-Limit": str(_rl_state["limit"]),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_at),
+            }
+            return ORJSONResponse(status_code=429, content={"detail": "rate limit exceeded"}, headers=headers)
+        resp = await call_next(request)
+        remaining = max(_rl_state["limit"] - int(count), 0)
+        reset_at = int(now + (ttl if ttl >= 0 else _rl_state["window"]))
+        resp.headers.setdefault("X-RateLimit-Limit", str(_rl_state["limit"]))
+        resp.headers.setdefault("X-RateLimit-Remaining", str(remaining))
+        resp.headers.setdefault("X-RateLimit-Reset", str(reset_at))
+        return resp
+    # Fallback to in-memory window
     window_elapsed = now - _rl_state["window_start"]
     if window_elapsed >= _rl_state["window"]:
         _rl_state["window_start"] = now
@@ -422,6 +523,14 @@ def _webhook_get(event_id: str):
     # Memory first
     if event_id in _webhook_events_mem:
         return _webhook_events_mem[event_id]
+    # Redis (optional distributed idempotency)
+    if redis_enabled():
+        val, _ttl = get_with_ttl(f"stripe_evt:{event_id}")
+        if val:
+            try:
+                return json.loads(val)
+            except Exception:
+                return {"id": event_id, "source": "redis"}
     coll = _webhook_events_collection()
     if not coll:
         return None
@@ -438,6 +547,16 @@ def _webhook_get(event_id: str):
 def _webhook_store(event_id: str, record: dict):
     # Always store in memory for fast duplicate checks
     _webhook_events_mem[event_id] = record
+    # Redis store with TTL for distributed idempotency
+    if redis_enabled():
+        try:
+            ttl = int(os.getenv("OSCILLINK_WEBHOOK_TTL", "604800"))  # 7 days default
+        except ValueError:
+            ttl = 604800
+        try:
+            set_with_ttl(f"stripe_evt:{event_id}", json.dumps(record, separators=(",", ":")), ttl)
+        except Exception:
+            pass
     coll = _webhook_events_collection()
     if not coll:
         return
@@ -823,6 +942,244 @@ def metrics():
     data = generate_latest()  # type: ignore
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
+def _new_api_key() -> str:
+    # Generate a URL-safe API key (32 bytes -> 43 chars base64url). Prefix for readability.
+    try:
+        import secrets
+        return "ok_" + secrets.token_urlsafe(32)
+    except Exception:
+        return "ok_" + uuid.uuid4().hex
+
+# --- Optional Firestore mapping: api_key -> (stripe_customer_id, subscription_id) ---
+_CUSTOMERS_COLLECTION = os.getenv("OSCILLINK_CUSTOMERS_COLLECTION", "").strip()
+
+def _fs_get_customer_mapping(api_key: str):  # pragma: no cover - external dependency
+    if not _CUSTOMERS_COLLECTION:
+        return None
+    try:
+        from google.cloud import firestore  # type: ignore
+        client = firestore.Client()
+        snap = client.collection(_CUSTOMERS_COLLECTION).document(api_key).get()
+        if snap.exists:
+            return snap.to_dict() or None
+    except Exception:
+        return None
+    return None
+
+def _fs_set_customer_mapping(api_key: str, customer_id: str | None, subscription_id: str | None):  # pragma: no cover - external dependency
+    if not _CUSTOMERS_COLLECTION or not api_key or not (customer_id or subscription_id):
+        return
+    try:
+        from google.cloud import firestore  # type: ignore
+        client = firestore.Client()
+        doc_ref = client.collection(_CUSTOMERS_COLLECTION).document(api_key)
+        payload = {
+            "api_key": api_key,
+            "stripe_customer_id": customer_id,
+            "subscription_id": subscription_id,
+            "updated_at": time.time(),
+        }
+        if not doc_ref.get().exists:
+            payload["created_at"] = time.time()
+        doc_ref.set(payload, merge=True)
+    except Exception:
+        # best-effort only
+        pass
+
+def _stripe_fetch_session_and_subscription(session_id: str):  # pragma: no cover - external dependency path
+    stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
+    if not stripe_secret:
+        raise RuntimeError("stripe secret not configured")
+    import stripe  # type: ignore
+    stripe.api_key = stripe_secret
+    stripe.api_version = "2024-06-20"
+    session = stripe.checkout.Session.retrieve(session_id, expand=["subscription", "customer"])  # type: ignore
+    if not session:
+        raise ValueError("session not found")
+    sub = session.get("subscription") if isinstance(session, dict) else getattr(session, "subscription", None)
+    if isinstance(sub, str):
+        sub = stripe.Subscription.retrieve(sub)  # type: ignore
+    if not isinstance(sub, dict):
+        sub_id = session.get("subscription") if isinstance(session, dict) else None
+        if sub_id:
+            sub = stripe.Subscription.retrieve(sub_id)  # type: ignore
+    if not isinstance(sub, dict):
+        raise ValueError("subscription not found for session")
+    return session, sub
+
+def _send_key_email(to_email: str, api_key: str, tier: str, status: str) -> bool:
+    """Best-effort email sender for delivering API keys.
+
+    Controlled by environment:
+      - OSCILLINK_EMAIL_MODE: 'none' (default), 'console', or 'smtp'
+      - OSCILLINK_EMAIL_FROM: sender address for smtp mode
+      - SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_TLS (1/0)
+
+    Returns True if an email was attempted/sent; False otherwise.
+    """
+    mode = (os.getenv("OSCILLINK_EMAIL_MODE", "none") or "none").lower()
+    if not to_email or mode == "none":
+        return False
+    subject = "Your Oscillink API Key"
+    body = (
+        f"Thanks for subscribing.\n\n"
+        f"Tier: {tier} (status: {status})\n"
+        f"API Key: {api_key}\n\n"
+        f"Keep this key secret. You can rotate or revoke it via support.\n"
+    )
+    if mode == "console":
+        # Log to server console only (useful for dev)
+        print(f"[email:console] to={to_email} subject={subject}\n{body}")
+        return True
+    if mode == "smtp":
+        from_addr = os.getenv("OSCILLINK_EMAIL_FROM", "")
+        host = os.getenv("SMTP_HOST", "")
+        port = int(os.getenv("SMTP_PORT", "587") or "587")
+        user = os.getenv("SMTP_USER", "")
+        pw = os.getenv("SMTP_PASS", "")
+        use_tls = os.getenv("SMTP_TLS", "1") in {"1", "true", "TRUE", "on"}
+        if not (from_addr and host and to_email):
+            return False
+        try:
+            msg = EmailMessage()
+            msg["From"] = from_addr
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            msg.set_content(body)
+            with smtplib.SMTP(host, port, timeout=10) as s:
+                if use_tls:
+                    s.starttls()
+                if user:
+                    s.login(user, pw)
+                s.send_message(msg)
+            return True
+        except Exception:
+            # Do not fail webhook processing on email errors
+            return False
+    return False
+
+def _provision_key_for_subscription(sub: dict) -> tuple[str, str, str]:  # (api_key, tier, status)
+    meta = sub.get("metadata", {}) or {}
+    api_key = meta.get("api_key") if isinstance(meta, dict) else None
+    new_tier = resolve_tier_from_subscription(sub)
+    tinfo = tier_info(new_tier)
+    status = "pending" if getattr(tinfo, "requires_manual_activation", False) else "active"
+    if not api_key:
+        api_key = _new_api_key()
+        # Best-effort attach to subscription metadata
+        try:
+            import stripe  # type: ignore
+            stripe.Subscription.modify(sub.get("id"), metadata={**meta, "api_key": api_key})  # type: ignore
+        except Exception:
+            pass
+    ks = get_keystore()
+    ks.update(api_key, create=True, tier=new_tier, status=status, features={"diffusion_gates": tinfo.diffusion_allowed})
+    return api_key, new_tier, status
+
+@app.get("/billing/success")
+def billing_success(session_id: str | None = None):  # pragma: no cover - external dependency path
+    """Stripe Checkout success landing page."""
+    if not session_id:
+        return HTMLResponse(status_code=400, content=(
+            "<html><body><h2>Missing session</h2><p>session_id is required. "
+            "If you reached this page from Stripe Checkout, contact support.</p></body></html>"))
+    try:
+        _ = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
+        if not _:
+            return HTMLResponse(status_code=503, content=(
+                "<html><body><h2>Billing not configured</h2>"
+                "<p>Stripe secret not set on server. Your payment likely succeeded, but we can't "
+                "provision a key automatically. Please email contact@oscillink.com with your receipt.</p>"
+                "</body></html>"))
+        session, sub = _stripe_fetch_session_and_subscription(session_id)
+        api_key, new_tier, status = _provision_key_for_subscription(sub)
+        # Best-effort: persist api_key -> (customer_id, subscription_id) mapping for portal/cancel flows
+        try:
+            cust_id = session.get("customer") if isinstance(session, dict) else None
+            sub_id = sub.get("id") if isinstance(sub, dict) else None
+            _fs_set_customer_mapping(api_key, cust_id, sub_id)
+        except Exception:
+            pass
+        html = f"""
+        <html>
+          <head>
+            <meta charset=\"utf-8\" />
+            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+            <title>Oscillink — Your API Key</title>
+            <style>
+              body {{ font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; color: #111; }}
+              code {{ background: #f5f5f5; padding: 0.25rem 0.4rem; border-radius: 4px; }}
+              .card {{ border: 1px solid #eee; border-radius: 8px; padding: 1rem 1.25rem; max-width: 800px; }}
+              .muted {{ color: #555; }}
+            </style>
+          </head>
+          <body>
+            <div class=\"card\">
+              <h2>Thanks — your key is ready</h2>
+              <p class=\"muted\">Tier: <strong>{new_tier}</strong> · Status: <strong>{status}</strong></p>
+              <p>API Key: <code>{api_key}</code></p>
+              <h3>Quickstart</h3>
+              <ol>
+                <li>Install: <code>pip install oscillink</code></li>
+                <li>Call the Cloud API with header <code>X-API-Key: {api_key}</code></li>
+              </ol>
+              <p class=\"muted\">Keep this key secret. You can rotate or revoke it via admin support.</p>
+            </div>
+          </body>
+        </html>
+        """
+        # Apply strict response headers to avoid caching and referrer leaks
+        headers = {
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+            # Narrow CSP suitable for this simple page
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+        }
+        return HTMLResponse(content=html, headers=headers)
+    except ModuleNotFoundError:
+        return HTMLResponse(status_code=501, content=(
+            "<html><body><h2>Stripe library not installed</h2>"
+            "<p>Server cannot retrieve your session. We will email your key shortly.</p></body></html>"))
+    except Exception as e:
+        return HTMLResponse(status_code=400, content=(
+            f"<html><body><h2>Checkout session error</h2><p>{str(e)}</p>"
+            "<p>If this persists, contact support with your receipt.</p></body></html>"))
+
+@app.post("/billing/portal")
+def create_billing_portal(ctx=Depends(feature_context)):
+    """Create a Stripe Billing Portal session for the authenticated API key.
+
+    Requires Firestore customer mapping (OSCILLINK_CUSTOMERS_COLLECTION) and STRIPE_SECRET_KEY.
+    Returns a URL to redirect the user for managing/cancelling their subscription.
+    """
+    x_api_key = ctx["api_key"]
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="missing API key")
+    mapping = _fs_get_customer_mapping(x_api_key)
+    if not mapping or not mapping.get("stripe_customer_id"):
+        raise HTTPException(status_code=404, detail="customer mapping not found; contact support")
+    try:
+        stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
+        if not stripe_secret:
+            raise HTTPException(status_code=503, detail="billing not configured")
+        import stripe  # type: ignore
+        stripe.api_key = stripe_secret
+        stripe.api_version = "2024-06-20"
+        return_url = os.getenv("OSCILLINK_PORTAL_RETURN_URL", "https://oscillink.com")
+        sess = stripe.billing_portal.Session.create(  # type: ignore
+            customer=mapping["stripe_customer_id"],
+            return_url=return_url,
+        )
+        return {"url": getattr(sess, "url", None) or sess.get("url")}
+    except HTTPException:
+        raise
+    except ModuleNotFoundError as exc:
+        raise HTTPException(status_code=501, detail="stripe library not installed") from exc
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"failed to create portal session: {e}") from e
+
 @app.post(f"/{_API_VERSION}/jobs/settle")
 def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request, ctx=Depends(feature_context)):
     x_api_key = ctx["api_key"]
@@ -1029,6 +1386,42 @@ def admin_get_usage(api_key: str, auth=Depends(_admin_guard)):
         }
     return {"api_key": api_key, "quota": quota, "monthly": monthly}
 
+@app.post("/admin/billing/cancel/{api_key}")
+def admin_cancel_subscription(api_key: str, immediate: bool | None = None, auth=Depends(_admin_guard)):
+    """Cancel a customer's subscription for the given API key (admin only).
+
+    If immediate is True, the subscription is cancelled immediately; otherwise it will cancel at period end.
+    Requires customer mapping in Firestore and STRIPE_SECRET_KEY.
+    """
+    mapping = _fs_get_customer_mapping(api_key)
+    if not mapping or not mapping.get("subscription_id"):
+        raise HTTPException(status_code=404, detail="subscription mapping not found")
+    try:
+        stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
+        if not stripe_secret:
+            raise HTTPException(status_code=503, detail="billing not configured")
+        import stripe  # type: ignore
+        stripe.api_key = stripe_secret
+        stripe.api_version = "2024-06-20"
+        sub_id = mapping["subscription_id"]
+        do_immediate = bool(immediate) if immediate is not None else (os.getenv("OSCILLINK_STRIPE_CANCEL_IMMEDIATE", "0") in {"1","true","TRUE","on"})
+        if do_immediate:
+            stripe.Subscription.delete(sub_id)  # type: ignore
+            status = "cancelled"
+        else:
+            stripe.Subscription.modify(sub_id, cancel_at_period_end=True)  # type: ignore
+            status = "cancel_at_period_end"
+        # Suspend key access immediately
+        ks = get_keystore()
+        ks.update(api_key, status="suspended")
+        return {"api_key": api_key, "subscription_id": sub_id, "status": status}
+    except HTTPException:
+        raise
+    except ModuleNotFoundError as exc:
+        raise HTTPException(status_code=501, detail="stripe library not installed") from exc
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"failed to cancel subscription: {e}") from e
+
 # Stripe webhook with subscription → tier sync
 @app.post("/stripe/webhook")
 async def stripe_webhook(request: Request):  # noqa: C901
@@ -1159,6 +1552,46 @@ async def stripe_webhook(request: Request):  # noqa: C901
                     note = "subscription cancelled; key suspended"
         else:
             note = "subscription missing api_key metadata"
+    # Checkout success handling (optional auto-provisioning via webhook)
+    elif etype == "checkout.session.completed":
+        sess_obj = event.get("data", {}).get("object", {}) if isinstance(event, dict) else {}
+        email = None
+        try:
+            email = (
+                (sess_obj.get("customer_details", {}) or {}).get("email")
+                or sess_obj.get("customer_email")
+            )
+        except Exception:
+            email = None
+        stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
+        if not stripe_secret:
+            note = "stripe secret not set; cannot provision on webhook"
+        elif secret and not verified and not allow_unverified:
+            note = "signature not verified; checkout session ignored"
+        else:
+            try:  # pragma: no cover - external dependency path
+                import stripe  # type: ignore
+                stripe.api_key = stripe_secret
+                stripe.api_version = "2024-06-20"
+                sid = sess_obj.get("id") or None
+                if not sid:
+                    raise ValueError("missing session id")
+                session, sub = _stripe_fetch_session_and_subscription(sid)
+                api_key, new_tier, status = _provision_key_for_subscription(sub)
+                try:
+                    cust_id = session.get("customer") if isinstance(session, dict) else None
+                    sub_id = sub.get("id") if isinstance(sub, dict) else None
+                    _fs_set_customer_mapping(api_key, cust_id, sub_id)
+                except Exception:
+                    pass
+                if email:
+                    _send_key_email(email, api_key, new_tier, status)
+                processed = True
+                note = f"key provisioned for session; tier={new_tier}"
+            except ModuleNotFoundError:
+                note = "stripe library not installed; cannot provision"
+            except Exception as e:
+                note = f"provisioning failed: {e}"
     record = {
         "id": event_id,
         "ts": time.time(),
