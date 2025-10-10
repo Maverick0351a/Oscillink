@@ -413,33 +413,32 @@ Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F
 
 ## Release & PyPI publishing (maintainers)
 
-We publish to PyPI via GitHub Actions using GitHub OIDC Trusted Publishing (no API tokens). The workflow is `.github/workflows/publish.yml` and supports TestPyPI and PyPI.
+We publish to PyPI via GitHub Actions using GitHub OIDC Trusted Publishing (no API tokens). The workflow is `.github/workflows/publish.yml` and publishes directly to PyPI on GitHub Release.
 
 One‑time setup (already in progress):
 
 - In PyPI project settings → Publishing, add a GitHub Actions trusted publisher for `Maverick0351a/Oscillink` and `.github/workflows/publish.yml`. It will show as "pending" until the first publish runs.
 
-Triggers:
+Trigger:
 
-- Push a tag like `vX.Y.Z` → builds the package and uploads to TestPyPI
-- Publish a GitHub Release (for the same tag) → uploads the same built artifacts to PyPI
+- Publish a GitHub Release (for tag `vX.Y.Z`) → builds and uploads to PyPI
 
 Release steps:
 
 1) Bump version in `pyproject.toml` under `[project] version = "X.Y.Z"` and commit.
-2) Create and push a tag `vX.Y.Z` to trigger TestPyPI publish. Example (PowerShell):
+2) Create and push a tag `vX.Y.Z` (the Release will reference this tag). Example (PowerShell):
 
 ```powershell
 git tag v0.1.6
 git push origin v0.1.6
 ```
 
-3) After TestPyPI looks good, create a GitHub Release for the tag `vX.Y.Z` (via the GitHub UI). This publishes to PyPI.
+3) Create a GitHub Release for the tag `vX.Y.Z` (via the GitHub UI). This publishes to PyPI.
 
 Notes:
 
 - The workflow builds with PEP 517 (`python -m build`) and publishes using `pypa/gh-action-pypi-publish@release/v1` via OIDC (`id-token: write`).
-- No repository secrets are required for publishing. If you want to fall back to token-based publishing, reintroduce Twine with `PYPI_API_TOKEN`/`TEST_PYPI_API_TOKEN` secrets and remove OIDC permissions.
+- No repository secrets are required for publishing. If you want to fall back to token-based publishing, reintroduce Twine with `PYPI_API_TOKEN` and remove OIDC permissions.
 
 ---
 
