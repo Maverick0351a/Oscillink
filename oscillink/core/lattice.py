@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 
@@ -75,8 +75,8 @@ class OscillinkLattice:
         self.psi = np.zeros(self.D, dtype=np.float32)
 
         self.lamG, self.lamC, self.lamQ = lamG, lamC, lamQ
-        self.L_path = None
-        self.A_path = None
+        self.L_path: Optional[np.ndarray] = None
+        self.A_path: Optional[np.ndarray] = None
         self.lamP = 0.0
         self.last: Dict[str, Any] = {"iters": 0, "res": None, "t_ms": None}
         # original chain node ordering (None until add_chain called)
@@ -389,7 +389,7 @@ class OscillinkLattice:
         mu_p = R_p.mean(axis=1, keepdims=True)
         sig_p = R_p.std(axis=1, keepdims=True) + 1e-12
 
-        edges = []
+        edges: List[Dict[str, Any]] = []
         worst = (-1, -1.0, (-1, -1))
         gain = 0.0
         for k in range(len(chain) - 1):
@@ -417,7 +417,8 @@ class OscillinkLattice:
                 float(ydiff @ ydiff) - float(udiff @ udiff)
             )
 
-        verdict = all(max(e["z_struct"], e["z_path"]) <= z_th for e in edges)
+        # Ensure numeric typing for mypy: cast to float before comparison
+        verdict = all(max([cast(float, e["z_struct"]), cast(float, e["z_path"])]) <= float(z_th) for e in edges)
         return {
             "verdict": bool(verdict),
             "weakest_link": {

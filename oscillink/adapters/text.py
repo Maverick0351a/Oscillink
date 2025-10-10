@@ -24,7 +24,7 @@ def simple_text_embed(texts: list[str], d: int = 384) -> np.ndarray:
 @lru_cache(maxsize=2)
 def _load_st_model(model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
     try:
-        from sentence_transformers import SentenceTransformer  # type: ignore
+        from sentence_transformers import SentenceTransformer
     except Exception:  # pragma: no cover - optional dependency
         return None
     try:
@@ -61,7 +61,7 @@ def embed_texts(
     model = _load_st_model(model_name)
     if model is not None:
         try:
-            vecs = model.encode(texts_list, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=normalize)  # type: ignore[arg-type]
+            vecs = model.encode(texts_list, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=normalize)
             if not normalize:
                 # Model may have normalized already; if not, we accept raw.
                 pass
