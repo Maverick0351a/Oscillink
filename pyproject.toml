@@ -9,7 +9,7 @@ description = "Oscillink Lattice — Short-Term Coherence SDK (physics-inspired 
 authors = [{name="Oscillink", email="contact@oscillink.com"}]
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "Apache-2.0"}
+license = {file = "LICENSE"}
 dependencies = [
   "numpy>=1.22,<2.0",
   "typing_extensions>=4.7"
@@ -29,6 +29,13 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12"
 ]
+
+[project.urls]
+Homepage = "https://github.com/Maverick0351a/Oscillink"
+Documentation = "https://github.com/Maverick0351a/Oscillink#quickstart"
+Source = "https://github.com/Maverick0351a/Oscillink"
+Issues = "https://github.com/Maverick0351a/Oscillink/issues"
+Changelog = "https://github.com/Maverick0351a/Oscillink/blob/main/CHANGELOG.md"
 
 [project.scripts]
 oscillink = "oscillink.cli:main"
@@ -76,6 +83,11 @@ cloud-all = [
 [tool.setuptools]
 # Explicitly list packages to avoid discovery error with multiple top-level dirs (oscillink, cloud)
 packages = ["oscillink", "cloud"]
+
+[tool.setuptools.package-data]
+oscillink = [
+  "py.typed",
+]
 
 [tool.ruff]
 line-length = 100

@@ -69,6 +69,7 @@ state_*.json
 # ---- OS noise ----
 .DS_Store
 Thumbs.db
+Oscillink final.svg
 
 # ---- Jupyter ----
 .ipynb_checkpoints/
