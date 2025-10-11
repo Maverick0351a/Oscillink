@@ -88,8 +88,9 @@ def compute_diffusion_gates(
     if kneighbors < 1:
         raise ValueError("kneighbors must be >=1")
 
-    Yf = Y.astype(np.float32, copy=False)
-    psif = psi.astype(np.float32, copy=False)
+    # Explicit annotations to satisfy mypy var-annotated check
+    Yf: np.ndarray = Y.astype(np.float32, copy=False)
+    psif: np.ndarray = psi.astype(np.float32, copy=False)
 
     # 1. Build structural adjacency consistent with lattice defaults.
     A = mutual_knn_adj(

@@ -5,7 +5,7 @@ import hmac
 import json
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -495,12 +495,12 @@ class OscillinkLattice:
             rs, rp = float(R_s[i, j]), float(R_p[i, j])
             edges.append(
                 {
-                    "k": k,
-                    "edge": [i, j],
-                    "z_struct": z_struct,
-                    "z_path": z_path,
-                    "r_struct": rs,
-                    "r_path": rp,
+                    "k": int(k),
+                    "edge": [int(i), int(j)],
+                    "z_struct": float(z_struct),
+                    "z_path": float(z_path),
+                    "r_struct": float(rs),
+                    "r_path": float(rp),
                 }
             )
             if max(z_struct, z_path) > worst[1]:
@@ -517,10 +517,7 @@ class OscillinkLattice:
             )
 
         # Ensure numeric typing for mypy: cast to float before comparison
-        verdict = all(
-            max([cast(float, e["z_struct"]), cast(float, e["z_path"])]) <= float(z_th)
-            for e in edges
-        )
+        verdict = all(max(float(e["z_struct"]), float(e["z_path"])) <= float(z_th) for e in edges)
         return {
             "verdict": bool(verdict),
             "weakest_link": {
@@ -667,7 +664,10 @@ class OscillinkLattice:
             for k in ["Y", "psi", "B_diag", "A", "chain_nodes"]:
                 meta.pop(k, None)
             meta_json = json.dumps(meta, sort_keys=True)
-            np.savez_compressed(path, __meta__=np.array(meta_json), **arrays)
+            # Build a merged kwargs dict to avoid mypy confusion about positional args
+            archive: dict[str, np.ndarray] = {"__meta__": np.array(meta_json)}
+            archive.update(arrays)
+            np.savez_compressed(path, **archive)
         else:
             raise ValueError("format must be 'json' or 'npz'")
 
