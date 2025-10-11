@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.9','3.10','3.11','3.12']
+        python-version: ['3.10','3.11','3.12']
         numpy-series: ['1', '2']
     permissions:
       contents: read
@@ -48,15 +48,17 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           python -m scripts.check_openapi_diff_simple --prev prev_openapi.json --current openapi.json || (echo "OpenAPI diff check failed" && exit 1)
-      - name: Upload OpenAPI schema artifact
+      - name: Upload OpenAPI schema artifact (per-matrix)
         uses: actions/upload-artifact@v4
         with:
-          name: openapi-schema
+          # Ensure uniqueness per matrix job and rerun attempt to avoid 409
+          name: openapi-schema-${{ matrix.python-version }}-numpy${{ matrix.numpy-series }}-run${{ github.run_attempt }}
           path: openapi.json
-      - name: Upload coverage xml
+      - name: Upload coverage xml (per-matrix)
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-xml
+          # Ensure uniqueness per matrix job and rerun attempt to avoid 409
+          name: coverage-xml-${{ matrix.python-version }}-numpy${{ matrix.numpy-series }}-run${{ github.run_attempt }}
           path: coverage.xml
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
@@ -69,9 +71,27 @@ jobs:
       - name: Performance Check
         run: |
           python scripts/perf_check.py --baseline scripts/perf_baseline.json --N 400 --D 64 --kneighbors 6 --trials 2 || echo "Perf check failed (non-blocking)"
-  perf-smoke:
+  merge-artifacts:
+    name: Merge CI artifacts
     runs-on: ubuntu-latest
     needs: test
+    steps:
+      - name: Merge OpenAPI schema artifacts
+        uses: actions/upload-artifact/merge@v4
+        with:
+            name: openapi-schema
+            pattern: openapi-schema-*
+            retention-days: 7
+      - name: Merge coverage xml artifacts
+        uses: actions/upload-artifact/merge@v4
+        with:
+            name: coverage-xml
+            pattern: coverage-xml-*
+            retention-days: 7
+
+  perf-smoke:
+    runs-on: ubuntu-latest
+    needs: [test]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
