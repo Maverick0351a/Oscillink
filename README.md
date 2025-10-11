@@ -14,8 +14,8 @@
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="https://buy.stripe.com/7sY9AUbcK1if2y6d2g2VG08">Get API Key</a> · <a href="notebooks/">Live Demos</a>
 	<br/><br/>
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
-	<a href="https://pypi.org/project/oscillink/0.1.7/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
-	<a href="https://pypi.org/project/oscillink/0.1.7/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
+	<a href="https://pypi.org/project/oscillink/0.1.8/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
+	<a href="https://pypi.org/project/oscillink/0.1.8/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Maverick0351a/Oscillink.svg"/></a>
 </p>
 
