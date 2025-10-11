@@ -29,7 +29,7 @@ from __future__ import annotations  # noqa: I001
 from typing import Optional  # noqa: I001
 import numpy as np  # noqa: I001
 from ..core.graph import mutual_knn_adj, normalized_laplacian, row_sum_cap  # noqa: I001
-from ..core.solver import cg_solve  # type: ignore  # local import to avoid adding a new dependency
+from ..core.solver import cg_solve  # local import to avoid adding a new dependency
 
 
 def compute_diffusion_gates(
