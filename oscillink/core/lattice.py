@@ -5,7 +5,7 @@ import hmac
 import json
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional
+from typing import Any, cast
 
 import numpy as np
 
@@ -39,7 +39,7 @@ class OscillinkLattice:
         lamC: float = 0.5,
         lamQ: float = 4.0,
         deterministic_k: bool = False,
-        neighbor_seed: Optional[int] = None,
+        neighbor_seed: int | None = None,
     ):
         # --- parameter validation ---
         if not isinstance(Y, np.ndarray) or Y.ndim != 2:
@@ -51,8 +51,8 @@ class OscillinkLattice:
         for name, val in {"lamC": lamC, "lamQ": lamQ}.items():
             if val < 0:
                 raise ValueError(f"{name} must be >= 0")
-        self.Y = Y.astype(np.float32).copy()
-        self.U = self.Y.copy()
+        self.Y: np.ndarray = Y.astype(np.float32).copy()
+        self.U: np.ndarray = self.Y.copy()
         self.N, self.D = self.Y.shape
 
         # neighbor build config
@@ -77,26 +77,26 @@ class OscillinkLattice:
         self.psi = np.zeros(self.D, dtype=np.float32)
 
         self.lamG, self.lamC, self.lamQ = lamG, lamC, lamQ
-        self.L_path: Optional[np.ndarray] = None
-        self.A_path: Optional[np.ndarray] = None
+        self.L_path: np.ndarray | None = None
+        self.A_path: np.ndarray | None = None
         self.lamP = 0.0
-        self.last: Dict[str, Any] = {"iters": 0, "res": None, "t_ms": None}
+        self.last: dict[str, Any] = {"iters": 0, "res": None, "t_ms": None}
         # original chain node ordering (None until add_chain called)
-        self._chain_nodes = None  # type: Optional[list[int]]
+        self._chain_nodes: list[int] | None = None
 
         # cache for U*
-        self._Ustar_cache: Optional[np.ndarray] = None
-        self._Ustar_sig: Optional[str] = None
-        self.stats: Dict[str, int] = {"ustar_solves": 0, "ustar_cache_hits": 0}
+        self._Ustar_cache: np.ndarray | None = None
+        self._Ustar_sig: str | None = None
+        self.stats: dict[str, int] = {"ustar_solves": 0, "ustar_cache_hits": 0}
         self._settle_callbacks: list = []  # user-provided callbacks
         self._logger = None
-        self._receipt_secret: Optional[bytes] = None
+        self._receipt_secret: bytes | None = None
         # signature mode: 'minimal' (default) or 'extended'
         self._signature_mode: str = "minimal"
         # receipt detail mode: 'full' (default) computes all diagnostics; 'light' skips heavy per-node/nulls
         self._receipt_detail: str = "full"
         # last dynamics (optional): populated when OSCILLINK_RECEIPT_DYNAMICS is enabled and settle() is called
-        self._last_dynamics: Optional[Dict[str, Any]] = None
+        self._last_dynamics: dict[str, Any] | None = None
         self._log(
             "init",
             {
@@ -111,7 +111,7 @@ class OscillinkLattice:
 
     # --- Public API ---
 
-    def set_query(self, psi: np.ndarray, gates: Optional[np.ndarray] = None) -> None:
+    def set_query(self, psi: np.ndarray, gates: np.ndarray | None = None) -> None:
         self.psi = psi.astype(np.float32).copy()
         if gates is not None:
             if gates.shape[0] != self.N:
@@ -128,9 +128,9 @@ class OscillinkLattice:
 
     def add_chain(
         self,
-        chain: List[int],
+        chain: list[int],
         lamP: float = 0.2,
-        weights: Optional[List[float]] = None,
+        weights: list[float] | None = None,
     ) -> None:
         if lamP < 0:
             raise ValueError("lamP must be >= 0")
@@ -165,7 +165,7 @@ class OscillinkLattice:
         *,
         warm_start: bool = True,
         inertia: float = 0.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Implicit Euler step: (I + dt M) U^+ = U + dt (lamG Y + lamQ B 1 psi^T)."""
         U_prev = self.U.copy()
         RHS = self.lamG * self.Y + self.lamQ * (self.B_diag[:, None] * self.psi[None, :])
@@ -295,7 +295,7 @@ class OscillinkLattice:
         self._log("refresh_ustar", {})
         return self.solve_Ustar(tol=tol, max_iters=max_iters, use_cache=True)
 
-    def receipt(self) -> Dict[str, Any]:
+    def receipt(self) -> dict[str, Any]:
         from .. import __version__ as pkg_version
 
         Ustar = self.solve_Ustar()
@@ -463,7 +463,7 @@ class OscillinkLattice:
         rec = self.receipt()
         return verify_receipt(rec, secret)
 
-    def chain_receipt(self, chain: List[int], z_th: float = 2.5) -> Dict[str, Any]:
+    def chain_receipt(self, chain: list[int], z_th: float = 2.5) -> dict[str, Any]:
         Ustar = self.solve_Ustar()
         di = self.sqrt_deg + 1e-12
         Un = Ustar / di[:, None]
@@ -485,7 +485,7 @@ class OscillinkLattice:
         mu_p = R_p.mean(axis=1, keepdims=True)
         sig_p = R_p.std(axis=1, keepdims=True) + 1e-12
 
-        edges: List[Dict[str, Any]] = []
+        edges: list[dict[str, Any]] = []
         worst = (-1, -1.0, (-1, -1))
         gain = 0.0
         for k in range(len(chain) - 1):
@@ -509,12 +509,10 @@ class OscillinkLattice:
             # chain coherence gain vs anchors
             ydiff = (self.Y[i] / di[i]) - (self.Y[j] / di[j])
             udiff = Un[i] - Un[j]
-            gain += (
-                0.5
-                * self.lamC
-                * max(self.A[i, j], 0.0)
-                * (float(ydiff @ ydiff) - float(udiff @ udiff))
-            )
+            w_ij = float(self.A[i, j])
+            if w_ij < 0.0:
+                w_ij = 0.0
+            gain += 0.5 * float(self.lamC) * w_ij * (float(ydiff @ ydiff) - float(udiff @ udiff))
 
         # Ensure numeric typing for mypy: cast to float before comparison
         verdict = all(max(float(e["z_struct"]), float(e["z_path"])) <= float(z_th) for e in edges)
@@ -583,7 +581,7 @@ class OscillinkLattice:
     # --- Export / Import helpers ---
     def export_state(
         self, include_graph: bool = True, include_chain: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return a JSON-serializable dict capturing lattice state for reproducibility."""
         from .. import __version__ as pkg_version  # local import to avoid cycle at top-level
 
@@ -597,7 +595,7 @@ class OscillinkLattice:
         h.update(np.array([self.lamG, self.lamC, self.lamQ, self.lamP], dtype=np.float64).tobytes())
         h.update(nz.tobytes())
         provenance = h.hexdigest()
-        state: Dict[str, Any] = {
+        state: dict[str, Any] = {
             "version": str(pkg_version),
             "shape": [int(self.N), int(self.D)],
             "params": {"lamG": self.lamG, "lamC": self.lamC, "lamQ": self.lamQ, "lamP": self.lamP},
@@ -667,7 +665,8 @@ class OscillinkLattice:
             # Build a merged kwargs dict to avoid mypy confusion about positional args
             archive: dict[str, np.ndarray] = {"__meta__": np.array(meta_json)}
             archive.update(arrays)
-            np.savez_compressed(path, **archive)
+            # Cast to a generic dict to appease type checkers about **kwargs types
+            np.savez_compressed(path, **cast(dict[str, Any], archive))
         else:
             raise ValueError("format must be 'json' or 'npz'")
 
@@ -691,7 +690,7 @@ class OscillinkLattice:
         return cls.from_state(state)
 
     @classmethod
-    def from_state(cls, state: Dict[str, Any]) -> OscillinkLattice:
+    def from_state(cls, state: dict[str, Any]) -> OscillinkLattice:
         Y = np.array(state["Y"], dtype=np.float32)
         params = state.get("params", {})
         lat = cls(
@@ -761,10 +760,10 @@ class OscillinkLattice:
     def rebuild_graph(
         self,
         *,
-        row_cap_val: Optional[float] = None,
-        kneighbors: Optional[int] = None,
-        deterministic_k: Optional[bool] = None,
-        neighbor_seed: Optional[int] = None,
+        row_cap_val: float | None = None,
+        kneighbors: int | None = None,
+        deterministic_k: bool | None = None,
+        neighbor_seed: int | None = None,
     ) -> None:
         """Rebuild adjacency and Laplacian with optional new parameters.
 
@@ -825,7 +824,7 @@ class OscillinkLattice:
     # --- Dynamics metrics (optional) ---
     def _compute_dynamics(
         self, U_prev: np.ndarray, U_next: np.ndarray, iters: int
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compute a single-step dynamics snapshot.
 
         Metrics:
@@ -860,7 +859,7 @@ class OscillinkLattice:
         Up = U_prev / di[:, None]
         Un = U_next / di[:, None]
         nz = np.argwhere(self.A > 0)
-        flows: List[Dict[str, Any]] = []
+        flows: list[dict[str, Any]] = []
         flow_total = 0.0
         # Limit top edges kept to avoid huge payloads
         TOP_K = 16
@@ -903,7 +902,7 @@ class OscillinkLattice:
             "move2_max": float(np.max(move2) if move2.size else 0.0),
         }
 
-    def _bfs_radius(self, seeds: List[int]) -> int:
+    def _bfs_radius(self, seeds: list[int]) -> int:
         if not seeds:
             return 0
         N = self.N

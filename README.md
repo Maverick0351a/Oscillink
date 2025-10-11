@@ -1,4 +1,4 @@
-# Oscillink: Self‑Optimizing Memory for Generative Models and Databases
+# Oscillink: Self‑Optimizing Physics-Based Memory System
 
 **Physics‑based coherence system that improves with use. Latency drops as your dataset grows. Hallucinations reduced. Every decision signed and deterministic.**
 
