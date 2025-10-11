@@ -1,29 +1,26 @@
-# Oscillink: Self‑Optimizing Physics-Based Memory System
+# Oscillink — Physics‑Based Coherent Memory
 
-**Physics‑based coherence system that improves with use. Latency drops as your dataset grows. Hallucinations reduced. Every decision signed and deterministic.**
+Build coherence into retrieval and generation. Deterministic receipts for every decision. Latency that scales gracefully with corpus size.
 
-
-
-<p>
+<p align="left">
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
 	<a href="https://app.codecov.io/gh/Maverick0351a/Oscillink/tree/main"><img alt="Coverage" src="https://codecov.io/gh/Maverick0351a/Oscillink/branch/main/graph/badge.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
+	<br/>
+	<sub>CI: Python 3.10–3.12 × NumPy 1.x/2.x · <a href="PATENTS.md">Patent pending</a></sub>
+
 </p>
-
-<sub>CI matrix: Python 3.10–3.12 × NumPy 1.x and 2.x</sub>
-
-<sub>Patent pending: U.S. Provisional 63/897,572 (filed 2025‑10‑11). See <a href="PATENTS.md">PATENTS.md</a>.</sub>
 
 Setup: synthetic “facts + traps” dataset — see the notebook for N, k, trials, seed. Reproducible via `notebooks/04_hallucination_reduction.ipynb`. Traps flagged; gate=0.01, off‑topic damp=0.5.
 
-- ⚡ Inverse scaling: latency often decreases as corpus size grows (<40 ms at N≈1200 CPU). For fixed D, k, and CG tol, settle tends to stay ~constant or improve with denser graphs. [scaling chart](assets/benchmarks/scale_timing.png) · [run](scripts/scale_benchmark.py)
-- 🎯 Hallucinations: 42.9% → 0% in a controlled study[1]. See the notebook (N, k, trials, seed). [study](notebooks/04_hallucination_reduction.ipynb) · [CLI sample](assets/benchmarks/competitor_single.png) · [run](scripts/competitor_benchmark.py)
+- ⚡ Latency scales smoothly: with fixed D, k, and CG tol, settle tends to remain stable with denser graphs. Reference E2E < 40 ms at N≈1200 on a laptop CPU.
+- 🎯 Hallucination control: in our controlled study[1], Oscillink reduced trap selections while maintaining competitive F1. See the notebook for setup and reproduction.
 - 🧾 Receipts: SHA‑256 state signature; optional HMAC‑SHA256. [schema](docs/RECEIPTS.md)
 - 🔧 Universal: works with any embeddings, no retraining. [adapters](#adapters--model-compatibility) · [quickstart](examples/quickstart.py)
 - 📈 Self‑optimizing: learns parameters over time. [adaptive suite](scripts/bench_adaptive_suite.py)
-- 🚀 Production: scales to millions. [perf snapshot](scripts/perf_snapshot.py) · [scale](scripts/scale_benchmark.py)
+- 🚀 Production: scales to millions. See scripts under `scripts/` for reproducible benchmarks.
 
 <p>
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
@@ -54,23 +51,19 @@ PY
 
 
 
-### Try it now (30 seconds, Windows PowerShell)
+### Quick checks (Windows PowerShell)
 
 ```powershell
-# 1) Competitor chart (cosine vs Oscillink) — saves PNG under assets\benchmarks
+# Compare cosine baseline vs Oscillink; writes JSON summary (no plotting)
 python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json --out benchmarks\competitor_sample.json
-python scripts/plot_benchmarks.py --competitor benchmarks\competitor_sample.json --out-dir assets\benchmarks
 
-# 2) Scaling chart — saves PNG under assets\benchmarks
+# Scaling harness; emits JSONL suitable for analysis
 python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
-python scripts/plot_benchmarks.py --scale benchmarks\scale.jsonl --out-dir assets\benchmarks
 ```
 
 With fixed D=64, k=6, tol=1e-3 and Jacobi preconditioning, CG converges in ~3–4 iterations; E2E time trends sublinear in practice with improved connectivity at larger N. Laptop ref: 3.5 GHz i7, Python 3.11, NumPy MKL/Accelerate.
 
-<p align="center">
-	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
-</p>
+<p align="center"><img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/></p>
 
 <p align="center"><i>Current: v0.1.11 • API v1 • Cloud: beta</i></p>
 
@@ -206,15 +199,9 @@ audit_trail = result["receipt"]  # Deterministic proof
 ## Proven Results
 
 ### 🎯 Reduced hallucinations (developer‑verifiable)
-- On the included sample dataset, Oscillink reduced trap selections (lower trap share in top‑k) compared to a cosine baseline while maintaining competitive F1. See the chart below and reproduce with one command.
+- On the included sample dataset, Oscillink reduced trap selections compared to a cosine baseline while maintaining competitive F1. Reproduce with one command and inspect the JSON output.
 
-<p align="center">
-    <img alt="Competitor vs Oscillink (F1, latency, traps %)" src="assets/benchmarks/competitor_single.png" width="720"/>
-	<br/>
-	<sub>Generated by scripts/plot_benchmarks.py from scripts/competitor_benchmark.py output (trap share when available)</sub>
-</p>
-
-Reproduce (Windows PowerShell):
+Reproduce (Windows PowerShell) — JSON only:
 
 ```powershell
 python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json --out benchmarks\competitor_sample.json
@@ -230,24 +217,14 @@ python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.js
 python scripts/plot_benchmarks.py --competitor benchmarks\competitor_multi.json --out-dir assets\benchmarks
 ```
 
-<p align="center">
-	<img alt="Aggregated competitor vs Oscillink (F1, latency, traps %; mean ± 95% CI)" src="assets/benchmarks/competitor_multi.png" width="720"/>
-	<br/>
-	<sub>Generated by scripts/plot_benchmarks.py from scripts/competitor_benchmark.py output (trap share when available)</sub>
-</p>
+<!-- Image plots removed -->
 
 ### ⚡ Performance benchmarks and scaling
 
 - End‑to‑end latency typically under 40 ms at N≈1200 on a laptop (Python 3.11), with “light” receipts. Graph build and solve times scale smoothly with N.
-- Our scaling harness emits JSONL so you can plot your own curves. Example chart below shows mean timings vs N.
+- The scaling harness emits JSONL so you can analyze timings on your hardware (no plotting required).
 
-<p align="center">
-	<img alt="Scaling curves" src="assets/benchmarks/scale_timing.png" width="720"/>
-	<br/>
-	<sub>Generated by scripts/plot_benchmarks.py from scripts/scale_benchmark.py output</sub>
-	</p>
-
-Reproduce on your machine and plot:
+Reproduce on your machine (JSONL only):
 
 ```powershell
 python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
