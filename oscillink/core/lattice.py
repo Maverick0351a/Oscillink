@@ -641,12 +641,18 @@ class OscillinkLattice:
         Un = Ustar / (self.sqrt_deg[:, None] + 1e-12)
         coh = np.zeros(self.N, dtype=np.float32)
         for i in range(self.N):
-            row = self.A[i]
-            for j, w in enumerate(row):
+            # iterate only over neighbors with non-zero weight
+            nz = np.nonzero(self.A[i])[0]
+            if nz.size == 0:
+                continue
+            yi = Yn[i]
+            ui = Un[i]
+            for j in nz:
+                w = float(self.A[i, j])
                 if w <= 0.0:
                     continue
-                ydiff = Yn[i] - Yn[j]
-                udiff = Un[i] - Un[j]
+                ydiff = yi - Yn[j]
+                udiff = ui - Un[j]
                 coh[i] += 0.5 * self.lamC * w * (float(ydiff @ ydiff) - float(udiff @ udiff))
         return coh
 

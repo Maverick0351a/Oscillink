@@ -1521,6 +1521,12 @@ async def stripe_webhook(request: Request):  # noqa: C901
     payload_text = body.decode("utf-8", errors="replace")
     event = None
     allow_unverified = os.getenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "0") in {"1", "true", "TRUE", "on"}
+    if allow_unverified:
+        try:
+            # Best-effort server-side warning to avoid production misconfiguration
+            print("[warn] OSCILLINK_ALLOW_UNVERIFIED_STRIPE is enabled — webhook signature verification may be bypassed. Do NOT enable in production.")
+        except Exception:
+            pass
     verified = False
     if secret:
         sig_header = request.headers.get("stripe-signature")

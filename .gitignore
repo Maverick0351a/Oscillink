@@ -4,10 +4,26 @@ __pycache__/
 *$py.class
 
 # ---- Virtual environments ----
+# common venv names (folders)
 .venv/
+.venv*/
 venv/
+venv*/
+env/
+env*/
+# poetry/pipenv/conda markers and dotenv files
+.python-version
+.pdm-python
+.pdm.toml
+Pipfile
+Pipfile.lock
+poetry.lock
+.conda/
+conda-meta/
 .env
 .env.*
+.envrc
+.direnv/
 
 # ---- Packaging / build artifacts ----
 build/
@@ -15,6 +31,8 @@ dist/
 *.egg-info/
 .eggs/
 wheelhouse/
+sdist/
+*.whl
 
 # ---- Test / coverage artifacts ----
 .pytest_cache/
@@ -24,6 +42,7 @@ wheelhouse/
 coverage.xml
 htmlcov/
 .tox/
+.nox/
 
 # ---- Logs & profiling ----
 *.log
@@ -54,9 +73,20 @@ Thumbs.db
 # ---- Jupyter ----
 .ipynb_checkpoints/
 .jupyter/
+**/.ipynb_checkpoints/
 
 # ---- Misc ----
 .cache/
 .tmp/
+*.tmp
+tmp/
+temp/
+~$*
 
 # End of .gitignore
+
+# ---- Secrets / local env files (do not commit) ----
+cloud/env.private.yaml
+cloud/env.stripe.yaml
+cloud/env.all.yaml
+cloud/whsec.txt

@@ -42,12 +42,17 @@ def per_node_components(
     N = Y.shape[0]
     coh_drop = np.zeros(N, dtype=np.float32)
     for i in range(N):
-        row = A[i]
-        for j, w in enumerate(row):
+        nz = np.nonzero(A[i])[0]
+        if nz.size == 0:
+            continue
+        yi = Yn[i]
+        ui = Un[i]
+        for j in nz:
+            w = float(A[i, j])
             if w <= 0.0:
                 continue
-            ydiff = Yn[i] - Yn[j]
-            udiff = Un[i] - Un[j]
+            ydiff = yi - Yn[j]
+            udiff = ui - Un[j]
             coh_drop[i] += 0.5 * lamC * w * (float(ydiff @ ydiff) - float(udiff @ udiff))
     anchor_pen = lamG * np.sum((Ustar - Y) ** 2, axis=1).astype(np.float32)
     qp = Ustar - psi[None, :]

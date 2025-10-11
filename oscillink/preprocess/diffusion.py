@@ -29,6 +29,7 @@ from __future__ import annotations  # noqa: I001
 from typing import Optional  # noqa: I001
 import numpy as np  # noqa: I001
 from ..core.graph import mutual_knn_adj, normalized_laplacian, row_sum_cap  # noqa: I001
+from ..core.solver import cg_solve  # type: ignore  # local import to avoid adding a new dependency
 
 
 def compute_diffusion_gates(
@@ -43,6 +44,9 @@ def compute_diffusion_gates(
     deterministic_k: bool = False,
     neighbor_seed: Optional[int] = None,
     clamp: bool = True,
+    method: str = "direct",
+    tol: float = 1e-4,
+    max_iters: int = 256,
 ) -> np.ndarray:
     """Compute screened diffusion gates.
 
@@ -108,16 +112,7 @@ def compute_diffusion_gates(
     s = beta * np.maximum(0.0, s)
 
     # 3. Solve (L_sym + gamma I) h = s (screened diffusion / Poisson).
-    M = L_sym + gamma * np.eye(N, dtype=np.float32)
-    try:
-        h = np.linalg.solve(M, s)
-    except np.linalg.LinAlgError:
-        # Fallback: add jitter & retry; final fallback uniform gates.
-        M_pert = M + 1e-6 * np.eye(N, dtype=np.float32)
-        try:
-            h = np.linalg.solve(M_pert, s)
-        except np.linalg.LinAlgError:
-            return np.ones(N, dtype=np.float32)
+    h = _solve_screened_diffusion(L_sym, gamma, s, method=method, tol=tol, max_iters=max_iters)
 
     # 4. Clamp / normalize.
     if clamp:
@@ -128,3 +123,33 @@ def compute_diffusion_gates(
     return h
 
 __all__ = ["compute_diffusion_gates"]
+
+
+def _solve_screened_diffusion(L_sym: np.ndarray, gamma: float, s: np.ndarray, *, method: str, tol: float, max_iters: int) -> np.ndarray:
+    """Solve (L_sym + gamma I) h = s using either direct or CG method.
+
+    Returns h as float32. On failure, returns uniform ones.
+    """
+    N = L_sym.shape[0]
+    if method == "cg":
+        # Jacobi preconditioner: diag(L_sym) + gamma
+        M_diag = np.diag(L_sym).astype(np.float32) + float(gamma)
+        def A_mul(x: np.ndarray) -> np.ndarray:
+            x2 = x[:, None] if x.ndim == 1 else x
+            out = (L_sym @ x2) + gamma * x2
+            return out.squeeze()
+        try:
+            h, _iters, _res = cg_solve(A_mul, s.astype(np.float32), x0=None, M_diag=M_diag, tol=tol, max_iters=max_iters)
+            return h.astype(np.float32)
+        except Exception:
+            return np.ones(N, dtype=np.float32)
+    # direct
+    M = L_sym + gamma * np.eye(N, dtype=np.float32)
+    try:
+        return np.linalg.solve(M, s).astype(np.float32)
+    except np.linalg.LinAlgError:
+        M_pert = M + 1e-6 * np.eye(N, dtype=np.float32)
+        try:
+            return np.linalg.solve(M_pert, s).astype(np.float32)
+        except np.linalg.LinAlgError:
+            return np.ones(N, dtype=np.float32)
