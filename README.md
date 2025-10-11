@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="https://buy.stripe.com/7sY9AUbcK1if2y6d2g2VG08">Get API Key</a> · <a href="notebooks/">Live Demos</a>
+	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 	<br/><br/>
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/0.1.9/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
@@ -18,6 +18,16 @@
 </p>
 
 ---
+
+## TL;DR
+- Coherent memory for any model (LLMs, image, video, audio, 3D) — no retraining.
+- Deterministic receipts for auditability and reproducibility.
+- SPD system with guaranteed convergence; typical E2E latency < 40 ms at N≈1200.
+- Drop-in replacement for RAG when you need coherence, not just similarity.
+
+Quick links:
+- [SDK Quickstart](#quickstart) · [API + Receipts](docs/API.md) · [Reproduce Results](#reproduce-results) · [Cloud (beta)](#use-the-cloud)
+
 	## What people are saying
 
 	“Oscillink represents a significant innovation in AI memory systems with strong theoretical foundations, excellent engineering, and production-ready implementation. The combination of novel physics-inspired algorithms, comprehensive cloud infrastructure, and proven results in hallucination reduction makes this a compelling solution for enterprises seeking reliable AI systems. The codebase demonstrates professional software engineering practices with extensive testing, documentation, and operational considerations for production deployment.”
@@ -68,46 +78,35 @@ Every generative model suffers from:
 - **Medical Literature Review**: 100% accuracy in drug interaction checks
 - **Code Generation**: 73% reduction in syntax errors with context memory
 
+### Reproduce results
+
+You can reproduce the study results locally:
+
+```bash
+pip install -e .[dev]
+python scripts/proof_hallucination.py --seed 123 --n 1200 --d 128
+```
+
+Example receipt (abridged):
+
+```json
+{
+	"state_sig": "sha256:9c1d…",
+	"energy": {
+		"H": 1.234,
+		"deltaH_total": -0.456,
+		"terms": {"data": 0.321, "graph": 0.789, "query": 0.124}
+	},
+	"params": {"kneighbors": 6, "lamG": 1.0, "lamC": 0.5, "lamQ": 4.0},
+	"timings_ms": {"build": 18.0, "settle": 10.2, "receipt": 3.1}
+}
+```
+
 ---
 
 ## Quickstart
 
-### Option 1: Cloud API (Recommended)
-```bash
-pip install oscillink
-```
-
-Get your API key: [Free Tier](https://buy.stripe.com/7sY9AUbcK1if2y6d2g2VG08) • [Beta Access ($19/mo)](https://buy.stripe.com/7sY9AUbcK1if2y6d2g2VG08)
-
-```python
-import os
-import httpx
-
-API_KEY = os.environ["OSCILLINK_API_KEY"]
-# Use your deployment. During beta, our hosted endpoint is https://api2.odinprotocol.dev
-API_BASE = os.environ.get("OSCILLINK_API_BASE", "https://api2.odinprotocol.dev")
-
-# Your embeddings from ANY model (OpenAI, Cohere, local, etc.)
-embeddings = [...]  # Your document embeddings
-query_embedding = [...]  # Your query embedding
-
-# Add coherent memory with one API call
-response = httpx.post(
-    f"{API_BASE}/v1/settle",
-    json={
-        "Y": embeddings,
-        "psi": query_embedding,
-        "options": {"bundle_k": 5, "include_receipt": True}
-    },
-    headers={"X-API-Key": API_KEY}
-)
-
-result = response.json()
-coherent_context = result["bundle"]  # Coherent, not just similar
-audit_trail = result["receipt"]  # Deterministic proof
-```
-
-### Option 2: Local SDK
+### Option A: Local SDK
 ```python
 from oscillink import Oscillink
 import numpy as np
@@ -124,6 +123,45 @@ lattice.settle()
 # Get coherent results (not just similar)
 top_k = lattice.bundle(k=5)  
 receipt = lattice.receipt()  # Audit trail with energy metrics
+```
+
+Requirements:
+- Python 3.9–3.12; NumPy >= 1.22 (current constraint < 2.0)
+- Embeddings: shape (N, D), dtype float32 recommended; near unit-norm preferred
+
+### Option B: Cloud API (beta)
+```bash
+pip install oscillink
+```
+
+Then obtain an API key (see [Use the Cloud](#use-the-cloud)) and call the API:
+
+```python
+import os
+import httpx
+
+API_KEY = os.environ["OSCILLINK_API_KEY"]
+# Use your deployment. During beta, our hosted endpoint is https://api2.odinprotocol.dev
+API_BASE = os.environ.get("OSCILLINK_API_BASE", "https://api2.odinprotocol.dev")
+
+# Your embeddings from ANY model (OpenAI, Cohere, local, etc.)
+embeddings = [...]  # Your document embeddings
+query_embedding = [...]  # Your query embedding
+
+# Add coherent memory with one API call
+response = httpx.post(
+	f"{API_BASE}/v1/settle",
+	json={
+		"Y": embeddings,
+		"psi": query_embedding,
+		"options": {"bundle_k": 5, "include_receipt": True}
+	},
+	headers={"X-API-Key": API_KEY}
+)
+
+result = response.json()
+coherent_context = result["bundle"]  # Coherent, not just similar
+audit_trail = result["receipt"]  # Deterministic proof
 ```
 
 ---
