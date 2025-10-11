@@ -1,4 +1,21 @@
 # [0.1.9] - 2025-10-10
+# [0.1.9] - 2025-10-10
+## [Unreleased]
+### Changed
+- NumPy policy aligned: support 1.22–<3.0 (1.x and 2.x). Updated pyproject and README.
+- CI expanded to Python 3.9–3.12 × NumPy 1.x/2.x matrix; retains ruff+mypy and perf checks.
+
+### Added
+- Security scans: CodeQL workflow and nightly `pip-audit` job.
+- Legal/commercial docs: Terms (docs/TERMS.md), Privacy (docs/PRIVACY.md), DPA template (docs/DPA.md); linked from README and project URLs.
+- README: Production stability/deprecation policy and Cloud beta status/SLO notes.
+
+### Removed
+- Unattributed testimonial block for launch; will reintroduce with verifiable citations.
+
+### Maintenance
+- Hardened marketing language ("pilot deployments"), ensured all benchmark claims remain reproducible with hardware refs.
+
 ### Fixed
 - README license badge switched to PyPI-backed shield for reliable rendering.
 

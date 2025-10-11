@@ -126,13 +126,13 @@ receipt = lattice.receipt()  # Audit trail with energy metrics
 ```
 
 Requirements:
-- Python 3.9–3.12; NumPy >= 1.22 (NumPy 2.x under validation)
+- Python 3.9–3.12; NumPy >= 1.22 and < 3.0 (1.x and 2.x supported)
 - Embeddings: shape (N, D), dtype float32 recommended; near unit-norm preferred
 
 Compatibility:
 - OS: Windows, macOS, Linux
 - Python: 3.9–3.12
-- NumPy: >= 1.22 (2.x under validation)
+- NumPy: 1.22–2.x (tested in CI)
 - CPU only; no GPU required
 
 ### Adapters & model compatibility
@@ -344,7 +344,7 @@ coherent_frames = frame_memory.bundle(k=10)  # Smooth transitions
 ### ⚡ Production Ready
 - **10ms latency** at 1,200 node scale
 - Horizontal scaling to millions of documents
-- Battle-tested in legal, medical, and financial applications
+- Pilot deployments in legal, medical, and financial domains
 
 ### 🧰 Operators (production-ready knobs)
 - Determinism: set `deterministic_k=True` or a `neighbor_seed`, fix CG `tol`, sign receipts.
@@ -691,11 +691,7 @@ Notes:
 - Examples: `examples/quickstart.py`, `examples/diffusion_gated.py`
 - Notebooks: `notebooks/`
 
-## What people are saying
-
-“Oscillink represents a significant innovation in AI memory systems with strong theoretical foundations, excellent engineering, and production-ready implementation. The combination of novel physics-inspired algorithms, comprehensive cloud infrastructure, and proven results in hallucination reduction makes this a compelling solution for enterprises seeking reliable AI systems. The codebase demonstrates professional software engineering practices with extensive testing, documentation, and operational considerations for production deployment.”
-
-_— Independent review_
+<!-- Testimonial section removed for launch until we can include verifiable citations -->
 
 ## Security & compliance
 
@@ -703,6 +699,12 @@ _— Independent review_
 - Code of Conduct: see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
 - Webhooks: keep `OSCILLINK_ALLOW_UNVERIFIED_STRIPE` off in production and set `STRIPE_WEBHOOK_SECRET`; the server enforces signature verification and timestamp freshness by default.
 - Secrets: never commit `.env` files. Private env YAMLs under `cloud/` are git-ignored by default.
+
+## Legal
+
+- Terms of Service: [`docs/TERMS.md`](docs/TERMS.md)
+- Privacy Policy: [`docs/PRIVACY.md`](docs/PRIVACY.md)
+- Data Processing Addendum (DPA): [`docs/DPA.md`](docs/DPA.md)
 
 ## Privacy & data handling
 
@@ -716,6 +718,17 @@ _— Independent review_
 - Contact: travisjohnson@oscillink.com
 - General support: contact@oscillink.com · Security: security@oscillink.com
 - Branding: Oscillink is a brand of Odin Protocol Inc. (trademark filing for Oscillink planned).
+
+## Production stability and deprecation policy
+
+- API stability: API v1 endpoints are stable. We will not introduce breaking changes to v1 without a deprecation cycle.
+- Deprecation window: For any backward-incompatible changes, we commit to a minimum 6-month deprecation window with clear CHANGELOG/Release notes and deprecation warnings.
+- Semantic versioning: Minor/patch releases are backward-compatible for the SDK; breaking changes only in major versions.
+
+## Status and uptime (cloud beta)
+
+- Uptime SLO: During beta, we target 99.5% monthly uptime for the hosted API.
+- Status page: Coming soon. Until then, we will post incidents and maintenance windows via GitHub Releases/Discussions and respond via contact@.
 
 ## Troubleshooting (Cloud)
 
