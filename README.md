@@ -3,7 +3,7 @@
 **Give ANY generative AI model coherent memory — turning random generators into consistent creative partners.**
 
 <p align="center">
-	<img src="assets/oscillink_hero.svg" alt="Oscillink" width="720" />
+	<img src="https://raw.githubusercontent.com/Maverick0351a/Oscillink/main/assets/oscillink_hero.svg" alt="Oscillink" width="720" />
 </p>
 
 <p align="center">
