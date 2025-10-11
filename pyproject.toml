@@ -11,7 +11,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
 dependencies = [
-  "numpy>=1.22,<2.0",
+  "numpy>=1.22,<3.0",
   "typing_extensions>=4.7"
 ]
 keywords = ["graph", "lattice", "memory", "retrieval", "ai", "ml", "coherence", "physics-inspired"]
