@@ -34,13 +34,7 @@
 - Drop-in replacement for RAG when you need coherence, not just similarity.
 
 Quick links:
-- [SDK Quickstart](#quickstart) · [API + Receipts](docs/API.md) · [Reproduce Results](#reproduce-results) · [Cloud (beta)](#use-the-cloud)
-
-	## What people are saying
-
-	“Oscillink represents a significant innovation in AI memory systems with strong theoretical foundations, excellent engineering, and production-ready implementation. The combination of novel physics-inspired algorithms, comprehensive cloud infrastructure, and proven results in hallucination reduction makes this a compelling solution for enterprises seeking reliable AI systems. The codebase demonstrates professional software engineering practices with extensive testing, documentation, and operational considerations for production deployment.”
-
-	_— Independent review_
+- [SDK Quickstart](#quickstart) · [API + Receipts](docs/API.md) · [Cloud (beta)](#use-the-cloud)
 
 
 ## The Problem with Generative AI Today
@@ -121,11 +115,11 @@ import numpy as np
 
 # Your embeddings (from OpenAI, Cohere, Sentence-Transformers, etc.)
 Y = np.array(embeddings).astype(np.float32)  # Shape: (n_docs, embedding_dim)
-query = np.array(query_embedding).astype(np.float32)  # Shape: (embedding_dim,)
+psi = np.array(query_embedding).astype(np.float32)  # Shape: (embedding_dim,)
 
 # Create coherent memory in 3 lines
 lattice = Oscillink(Y, kneighbors=6)
-lattice.set_query(query)
+lattice.set_query(psi)
 lattice.settle()
 
 # Get coherent results (not just similar)
@@ -134,7 +128,7 @@ receipt = lattice.receipt()  # Audit trail with energy metrics
 ```
 
 Requirements:
-- Python 3.9–3.12; NumPy >= 1.22 (current constraint < 2.0)
+- Python 3.9–3.12; NumPy >= 1.22 (NumPy 2.x under validation)
 - Embeddings: shape (N, D), dtype float32 recommended; near unit-norm preferred
 
 ### Option B: Cloud API (beta)
@@ -154,14 +148,14 @@ API_BASE = os.environ.get("OSCILLINK_API_BASE", "https://api2.odinprotocol.dev")
 
 # Your embeddings from ANY model (OpenAI, Cohere, local, etc.)
 embeddings = [...]  # Your document embeddings
-query_embedding = [...]  # Your query embedding
+psi = [...]  # Your query embedding
 
 # Add coherent memory with one API call
 response = httpx.post(
 	f"{API_BASE}/v1/settle",
 	json={
 		"Y": embeddings,
-		"psi": query_embedding,
+		"psi": psi,
 		"options": {"bundle_k": 5, "include_receipt": True}
 	},
 	headers={"X-API-Key": API_KEY}
@@ -188,7 +182,7 @@ from oscillink import Oscillink
 lattice = Oscillink(embeddings, kneighbors=6)
 lattice.set_query(query_embedding)
 lattice.settle()
-coherent_docs = lattice.bundle(k=5)  # Guaranteed coherent context
+coherent_docs = lattice.bundle(k=5)  # Coherent context with deterministic receipts
 ```
 
 ### 🎨 Consistent Image Generation
@@ -508,63 +502,12 @@ Response shape (abridged):
 - `timings_ms: dict` — perf timings
 - `meta: dict` — quota/rate limit headers are returned as `X-Quota-*` (per‑key quotas), plus `X-RateLimit-*` (global) and `X-IPLimit-*` (per‑IP); monthly caps via `X-Monthly-*` when enabled
 
-### Quotas, limits, and headers
+### Quotas, limits, scale, and billing
 
-- Global and per‑IP rate limits are enforced; exceeding returns 429 with headers indicating remaining and reset
-- Per‑key quotas (units consumed = N×D) and monthly caps by tier
-	- Beta plan: hard cap at 25M units/month; exceeding returns 429
-- Headers you’ll see:
-	- Per‑key quota window: `X-Quota-Limit`, `X-Quota-Remaining`, `X-Quota-Reset`
-	- Global rate limit: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
-	- Per‑IP rate limit: `X-IPLimit-Limit`, `X-IPLimit-Remaining`, `X-IPLimit-Reset`
-	- Monthly caps (if enabled): `X-Monthly-Cap`, `X-Monthly-Used`, `X-Monthly-Remaining`, `X-Monthly-Period`
-
-### Optional: Redis for scale
-
-Horizontal scaling is supported via an optional Redis backend for distributed rate limits and webhook idempotency.
-
-- Set `OSCILLINK_STATE_BACKEND=redis` and `OSCILLINK_REDIS_URL=redis://...`
-- Details: docs/REDIS_BACKEND.md
-
-### Beta notice
-
-⚠️ Beta Notice: Cloud API is in beta. Expect occasional downtime, breaking changes with notice, and email‑only support. Hard usage caps enforced. Production use at your own risk.
-
-### Manage or cancel your subscription
-
-Two ways to manage billing once you have an API key:
-
-- Self‑service billing portal (user):
-	- Endpoint: `POST /billing/portal`
-	- Auth: `X-API-Key: <your_key>`
-	- Response: `{ "url": "https://billing.stripe.com/..." }` — open this URL in a browser to manage payment method, invoices, or cancel.
-	- Requires server to have `STRIPE_SECRET_KEY` and a Firestore mapping collection set via `OSCILLINK_CUSTOMERS_COLLECTION` (the `/billing/success` flow persists `api_key → (stripe_customer_id, subscription_id)` for portal lookups). Optional `OSCILLINK_PORTAL_RETURN_URL` controls the post‑portal return URL.
-
-	Minimal example:
-	```bash
-	curl -X POST "$OSCILLINK_API_BASE/billing/portal" \
-		-H "X-API-Key: $YOUR_API_KEY"
-	```
-
-- Admin cancel (operator):
-	- Endpoint: `POST /admin/billing/cancel/{api_key}?immediate=true|false`
-	- Auth: `X-Admin-Secret: <OSCILLINK_ADMIN_SECRET>`
-	- Behavior: Cancels the Stripe subscription mapped to `api_key`. If `immediate=true` (or server env `OSCILLINK_STRIPE_CANCEL_IMMEDIATE=1`), the subscription is cancelled immediately; otherwise it cancels at period end. The API key is suspended right away.
-	- Requires the same Firestore mapping collection (`OSCILLINK_CUSTOMERS_COLLECTION`) and `STRIPE_SECRET_KEY`.
-
-	Minimal example:
-	```bash
-	curl -X POST "$OSCILLINK_API_BASE/admin/billing/cancel/$USER_API_KEY?immediate=false" \
-		-H "X-Admin-Secret: $OSCILLINK_ADMIN_SECRET"
-	```
-
-Server env summary for billing management:
-
-- `STRIPE_SECRET_KEY` — Stripe API key for server‑side operations
-- `OSCILLINK_CUSTOMERS_COLLECTION` — Firestore collection name used to persist `api_key → {stripe_customer_id, subscription_id}`
-- `OSCILLINK_PORTAL_RETURN_URL` — Optional return URL after the Stripe Billing Portal (default `https://oscillink.com`)
-- `OSCILLINK_ADMIN_SECRET` — Required for admin endpoints
-- `OSCILLINK_STRIPE_CANCEL_IMMEDIATE` — Optional default for admin cancel behavior (`1/true` for immediate)
+See:
+- Quotas, rate limits and headers: `docs/API.md`
+- Redis & horizontal scale: `docs/REDIS_BACKEND.md`
+- Stripe/billing portal and admin flows: `docs/STRIPE_INTEGRATION.md`
 
 ---
 
@@ -594,6 +537,12 @@ Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F
 - Whitepaper: Oscillink — A Symmetric Positive Definite Lattice for Scalable Working Memory & Hallucination Control (`OscillinkWhitepaper.tex`)
 - Examples: `examples/quickstart.py`, `examples/diffusion_gated.py`
 - Notebooks: `notebooks/`
+
+## What people are saying
+
+“Oscillink represents a significant innovation in AI memory systems with strong theoretical foundations, excellent engineering, and production-ready implementation. The combination of novel physics-inspired algorithms, comprehensive cloud infrastructure, and proven results in hallucination reduction makes this a compelling solution for enterprises seeking reliable AI systems. The codebase demonstrates professional software engineering practices with extensive testing, documentation, and operational considerations for production deployment.”
+
+_— Independent review_
 
 ## Security & compliance
 
