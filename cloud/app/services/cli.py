@@ -120,7 +120,8 @@ def update_session(code: str, patch: dict[str, Any]) -> bool:
             # Preserve existing TTL by reading it; if unavailable, reset to default
             try:
                 ttl = int(r.ttl(key))
-                if ttl is None or ttl < 0:
+                # If TTL missing, negative, or rounded down to 0, reset to default
+                if ttl is None or ttl <= 0:
                     ttl = ttl_seconds()
             except Exception:
                 ttl = ttl_seconds()
