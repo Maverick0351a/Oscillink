@@ -10,15 +10,16 @@
 
 
 <p align="center">
-	<img alt="Oscillink" src="assets/oscillink_hero.svg" width="640"/>
+	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
 </p>
 
 <p align="center">
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 	<br/><br/>
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
-	<a href="https://pypi.org/project/oscillink/0.1.9/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
-	<a href="https://pypi.org/project/oscillink/0.1.9/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
+	<a href="https://codecov.io/gh/Maverick0351a/Oscillink"><img alt="Coverage" src="https://codecov.io/gh/Maverick0351a/Oscillink/graph/badge.svg"/></a>
+	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
+	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 </p>
 
@@ -240,9 +241,9 @@ coherent_frames = frame_memory.bundle(k=10)  # Smooth transitions
 
 Oscillink minimizes a convex energy function over a mutual k-NN lattice:
 
-$
+$$
 H(U)=\lambda_G\|U-Y\|_F^2+\lambda_C\,\mathrm{tr}(U^\top L_{\mathrm{sym}}U)+\lambda_Q\,\mathrm{tr}((U-\mathbf{1}\psi^\top)^\top B\,(U-\mathbf{1}\psi^\top))
-$
+$$
 
 This creates a deterministic SPD system with guaranteed unique solution:
 - **No training required** — works instantly
@@ -585,10 +586,11 @@ Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F
 ## Docs & examples
 
 - SDK API: `docs/API.md`
-- Math overview: `docs/SPEC.md`
+- Math overview: `docs/MATH_OVERVIEW.md`
 - Receipts schema and examples: `docs/RECEIPTS.md`
 - Advanced cloud topics: `docs/CLOUD_ARCH_GCP.md`, `docs/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md`, `docs/FIRESTORE_USAGE_MODEL.md`, `docs/STRIPE_INTEGRATION.md`
 - Observability: `docs/OBSERVABILITY.md` and importable Grafana dashboard at `assets/grafana/oscillink_dashboard.json`
+- OpenAPI baseline: `openapi_baseline.json`
 - Whitepaper: Oscillink — A Symmetric Positive Definite Lattice for Scalable Working Memory & Hallucination Control (`OscillinkWhitepaper.tex`)
 - Examples: `examples/quickstart.py`, `examples/diffusion_gated.py`
 - Notebooks: `notebooks/`
