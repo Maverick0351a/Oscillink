@@ -4,33 +4,51 @@
 
 
 
-<p align="center">
-	<b>⚡ Inverse scaling:</b> latency decreases as corpus size grows (<40 ms at N≈1200 CPU)
-	<a href="assets/benchmarks/scale_timing.png">[scaling chart]</a> · <a href="scripts/scale_benchmark.py">[run]</a><br/>
-	<b>🎯 Hallucinations:</b> 42.9% → 0% in controlled tests
-	<a href="notebooks/04_hallucination_reduction.ipynb">[study]</a> · <a href="assets/benchmarks/competitor_single.png">[cli sample]</a> · <a href="scripts/competitor_benchmark.py">[run]</a><br/>
-	<b>🧾 Receipts:</b> SHA‑256 state signature; optional HMAC‑SHA256
-	<a href="docs/RECEIPTS.md">[schema]</a><br/>
-	<b>🔧 <a href="#adapters--model-compatibility">Universal</a>:</b> works with any embeddings, no retraining
-	<a href="examples/quickstart.py">[quickstart]</a><br/>
-	<b>📈 Self‑optimizing:</b> learns parameters over time
-	<a href="scripts/bench_adaptive_suite.py">[adaptive suite]</a><br/>
-	<b>🚀 Production:</b> scales to millions
-	<a href="scripts/perf_snapshot.py">[perf snapshot]</a> · <a href="scripts/scale_benchmark.py">[scale]</a><br/>
-	<b>Coherence & auditability:</b> Add coherence and auditability to any model (text, image, video, audio, 3D). Signed, deterministic receipts. No retraining.
-	<a href="examples/real_benchmark_sample.jsonl">[sample data]</a>
-</p>
-
-
-<p align="center">
-	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
-	<br/><br/>
+<p>
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
 	<a href="https://app.codecov.io/gh/Maverick0351a/Oscillink/tree/main"><img alt="Coverage" src="https://codecov.io/gh/Maverick0351a/Oscillink/branch/main/graph/badge.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 </p>
+
+Setup: synthetic “facts + traps” dataset — see the notebook for N, k, trials, seed. Reproducible via `notebooks/04_hallucination_reduction.ipynb`. Traps flagged; gate=0.01, off‑topic damp=0.5.
+
+- ⚡ Inverse scaling: latency often decreases as corpus size grows (<40 ms at N≈1200 CPU). For fixed D, k, and CG tol, settle tends to stay ~constant or improve with denser graphs. [scaling chart](assets/benchmarks/scale_timing.png) · [run](scripts/scale_benchmark.py)
+- 🎯 Hallucinations: 42.9% → 0% in a controlled study[1]. See the notebook (N, k, trials, seed). [study](notebooks/04_hallucination_reduction.ipynb) · [CLI sample](assets/benchmarks/competitor_single.png) · [run](scripts/competitor_benchmark.py)
+- 🧾 Receipts: SHA‑256 state signature; optional HMAC‑SHA256. [schema](docs/RECEIPTS.md)
+- 🔧 Universal: works with any embeddings, no retraining. [adapters](#adapters--model-compatibility) · [quickstart](examples/quickstart.py)
+- 📈 Self‑optimizing: learns parameters over time. [adaptive suite](scripts/bench_adaptive_suite.py)
+- 🚀 Production: scales to millions. [perf snapshot](scripts/perf_snapshot.py) · [scale](scripts/scale_benchmark.py)
+
+<p>
+	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
+</p>
+
+### Quick install (60 seconds)
+
+```bash
+pip install oscillink
+python - <<'PY'
+import numpy as np
+from oscillink import Oscillink
+Y = np.random.randn(80,128).astype('float32')
+psi = (Y[:10].mean(0)/ (np.linalg.norm(Y[:10].mean(0))+1e-9)).astype('float32')
+lat = Oscillink(Y, kneighbors=6, lamG=1.0, lamC=0.5, lamQ=4.0)
+lat.set_query(psi); lat.settle()
+print(lat.bundle(k=5)); print(lat.receipt()['deltaH_total'])
+PY
+```
+
+> Cloud Beta ($19, limited seats): hosted settle + signed receipts. Join from your terminal in ~60s:
+>
+> ```powershell
+> oscillink signup --wait
+> $env:OSCILLINK_API_BASE = "https://api2.odinprotocol.dev"
+> ```
+
+
+
 
 ### Try it now (30 seconds, Windows PowerShell)
 
@@ -43,6 +61,8 @@ python scripts/plot_benchmarks.py --competitor benchmarks\competitor_sample.json
 python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
 python scripts/plot_benchmarks.py --scale benchmarks\scale.jsonl --out-dir assets\benchmarks
 ```
+
+With fixed D=64, k=6, tol=1e-3 and Jacobi preconditioning, CG converges in ~3–4 iterations; E2E time trends sublinear in practice with improved connectivity at larger N. Laptop ref: 3.5 GHz i7, Python 3.11, NumPy MKL/Accelerate.
 
 <p align="center">
 	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
@@ -126,6 +146,7 @@ Oscillink is designed to be universal and light on dependencies:
 This flexibility ensures Oscillink works with your existing stack without imposing a large dependency footprint.
 
 ### Option B: Cloud API (beta)
+Cloud is strictly opt‑in. The SDK never sends data anywhere.
 ```bash
 pip install oscillink
 ```
@@ -263,6 +284,8 @@ Example receipt (abridged):
 - Complementary: can sit alongside your existing RAG stack (reuse embeddings and vector store).
 - Latency reference: ≈10 ms settle, <40 ms E2E at N≈1200 on reference hardware.
 
+Oscillink complements vector similarity with a global coherence objective — keep your embeddings and store; add explainable memory shaping on top.
+
 ---
 
 ## Transform Your AI Applications
@@ -320,6 +343,11 @@ coherent_frames = frame_memory.bundle(k=10)  # Smooth transitions
 - **10ms latency** at 1,200 node scale
 - Horizontal scaling to millions of documents
 - Battle-tested in legal, medical, and financial applications
+
+### 🧰 Operators (production-ready knobs)
+- Determinism: set `deterministic_k=True` or a `neighbor_seed`, fix CG `tol`, sign receipts.
+- Safety: `OSCILLINK_DIFFUSION_GATES_ENABLED=0` as an emergency kill switch for adaptive gates.
+- Observability: log `state_sig`, `profile_id`, `ustar_iters`, `ustar_res`, `deltaH_total`, `settle_ms`.
 
 ### 🔬 Rigorous Foundation
 - Physics-based SPD (Symmetric Positive Definite) system
@@ -756,3 +784,7 @@ Notes:
 ---
 
 © 2025 Odin Protocol Inc. (Oscillink brand)
+
+---
+
+[1] Hallucination headline details: see notebook `notebooks/04_hallucination_reduction.ipynb` (dataset card with N, k, trials, seed) and the CLI sample plot at `assets/benchmarks/competitor_single.png`.
