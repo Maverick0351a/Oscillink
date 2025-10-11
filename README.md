@@ -1,11 +1,24 @@
-# Oscillink: Universal Memory Layer for Generative AI
+# Oscillink: Self‑Optimizing Memory for Generative Models and Databases
 
-**Give ANY generative AI model coherent memory — turning random generators into consistent creative partners.**
+**Physics‑based coherence system that improves with use. Latency drops as your dataset grows. Hallucinations reduced. Every decision signed and deterministic.**
 
 
 
 <p align="center">
-	<b>🚀 Instant upgrade for any model</b> • <b>🎯 42.9% → 0% hallucination rate</b> • <b>⚡ 10ms latency</b> • <b>🔐 Deterministic receipts</b>
+	<b>⚡ Inverse scaling:</b> latency decreases as corpus size grows (<40 ms at N≈1200 CPU)
+	<a href="assets/benchmarks/scale_timing.png">[scaling chart]</a> · <a href="scripts/scale_benchmark.py">[run]</a><br/>
+	<b>🎯 Hallucinations:</b> 42.9% → 0% in controlled tests
+	<a href="notebooks/04_hallucination_reduction.ipynb">[study]</a> · <a href="assets/benchmarks/competitor_single.png">[cli sample]</a> · <a href="scripts/competitor_benchmark.py">[run]</a><br/>
+	<b>🧾 Receipts:</b> SHA‑256 state signature; optional HMAC‑SHA256
+	<a href="docs/RECEIPTS.md">[schema]</a><br/>
+	<b>🔧 <a href="#adapters--model-compatibility">Universal</a>:</b> works with any embeddings, no retraining
+	<a href="examples/quickstart.py">[quickstart]</a><br/>
+	<b>📈 Self‑optimizing:</b> learns parameters over time
+	<a href="scripts/bench_adaptive_suite.py">[adaptive suite]</a><br/>
+	<b>🚀 Production:</b> scales to millions
+	<a href="scripts/perf_snapshot.py">[perf snapshot]</a> · <a href="scripts/scale_benchmark.py">[scale]</a><br/>
+	<b>Coherence & auditability:</b> Add coherence and auditability to any model (text, image, video, audio, 3D). Signed, deterministic receipts. No retraining.
+	<a href="examples/real_benchmark_sample.jsonl">[sample data]</a>
 </p>
 
 
@@ -19,6 +32,18 @@
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 </p>
 
+### Try it now (30 seconds, Windows PowerShell)
+
+```powershell
+# 1) Competitor chart (cosine vs Oscillink) — saves PNG under assets\benchmarks
+python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json --out benchmarks\competitor_sample.json
+python scripts/plot_benchmarks.py --competitor benchmarks\competitor_sample.json --out-dir assets\benchmarks
+
+# 2) Scaling chart — saves PNG under assets\benchmarks
+python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
+python scripts/plot_benchmarks.py --scale benchmarks\scale.jsonl --out-dir assets\benchmarks
+```
+
 <p align="center">
 	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
 </p>
@@ -31,7 +56,7 @@
 - Coherent memory for any model (LLMs, image, video, audio, 3D) — no retraining.
 - Deterministic receipts for auditability and reproducibility.
 - SPD system with guaranteed convergence; typical E2E latency < 40 ms at N≈1200.
-- Drop-in replacement for RAG when you need coherence, not just similarity.
+- Coherence‑first retrieval that works alongside RAG — see metrics below.
 
 Quick links:
 - [SDK Quickstart](#quickstart) · [API + Receipts](docs/API.md) · [Cloud (beta)](#use-the-cloud)
@@ -40,71 +65,22 @@ Quick links:
 ## The Problem with Generative AI Today
 
 Every generative model suffers from:
-- ❌ **No working memory** between generations
-- ❌ **Hallucinations** from disconnected context  
-- ❌ **RAG's brittleness** with incoherent chunks
-- ❌ **No audit trail** for decisions
+- **No working memory** between generations
+- **Hallucinations** from disconnected context  
+- **RAG's brittleness** with incoherent chunks
+- **No audit trail** for decisions
 
 ## Oscillink: The Universal Solution
 
-✅ **Coherent Memory**: Physics-based SPD system maintains semantic coherence  
-✅ **Proven Results**: 42.9% → 0% hallucination in controlled tests  
-✅ **Any Model**: Works with LLMs, image generators, video, audio, 3D  
-✅ **Drop-in Replacement**: Better than RAG, simpler to integrate  
-✅ **Signed Receipts**: Deterministic audit trail for every decision
+✅ **Coherent memory**: Physics-based SPD system maintains semantic coherence  
+✅ **Proven results**: See metrics below (controlled study and benchmarks)  
+✅ **Any model**: Works with LLMs, image generators, video, audio, 3D  
+✅ **Coherence‑first retrieval**: Can sit alongside similarity‑only RAG  
+✅ **Signed receipts**: Deterministic audit trail for every decision
 
 ---
 
-## Proven Results
-
-### 🎯 Hallucination Elimination
-| Metric | Without Oscillink | With Oscillink | Improvement |
-|--------|------------------|----------------|-------------|
-| **Hallucination Rate** | 42.9% | 0.0% | **100% reduction** |
-| **F1 Score** | 0.61 | 1.00 | **64% increase** |
-| **Coherence Score** | 0.72 | 0.96 | **33% increase** |
-
-*Source: [Notebook 04 - Controlled Fact Retrieval Study](notebooks/04_hallucination_reduction.ipynb)*
-
-### ⚡ Performance Benchmarks
-| Operation | Time | Scale |
-|-----------|------|-------|
-| Graph Build | 18ms | 1,200 nodes |
-| Settle | 10ms | 1,200 nodes |
-| **Total E2E** | **<40ms** | **1,200 nodes** |
-
-*Benchmarked on: Intel i7-9750H laptop, Python 3.11*
-
-### 💼 Real-World Impact
-- **Legal Document Analysis**: 0 false citations in 10,000 document corpus
-- **Medical Literature Review**: 100% accuracy in drug interaction checks
-- **Code Generation**: 73% reduction in syntax errors with context memory
-
-### Reproduce results
-
-You can reproduce the study results locally:
-
-```bash
-pip install -e .[dev]
-python scripts/proof_hallucination.py --seed 123 --n 1200 --d 128
-```
-
-Example receipt (abridged):
-
-```json
-{
-	"state_sig": "sha256:9c1d…",
-	"energy": {
-		"H": 1.234,
-		"deltaH_total": -0.456,
-		"terms": {"data": 0.321, "graph": 0.789, "query": 0.124}
-	},
-	"params": {"kneighbors": 6, "lamG": 1.0, "lamC": 0.5, "lamQ": 4.0},
-	"timings_ms": {"build": 18.0, "settle": 10.2, "receipt": 3.1}
-}
-```
-
----
+ 
 
 ## Quickstart
 
@@ -130,6 +106,24 @@ receipt = lattice.receipt()  # Audit trail with energy metrics
 Requirements:
 - Python 3.9–3.12; NumPy >= 1.22 (NumPy 2.x under validation)
 - Embeddings: shape (N, D), dtype float32 recommended; near unit-norm preferred
+
+Compatibility:
+- OS: Windows, macOS, Linux
+- Python: 3.9–3.12
+- NumPy: >= 1.22 (2.x under validation)
+- CPU only; no GPU required
+
+### Adapters & model compatibility
+
+Oscillink is designed to be universal and light on dependencies:
+
+- Bring your own embeddings: from OpenAI, Cohere, or local models; just supply `Y: (N,D)` and your query `psi: (D,)`.
+- Minimal deps: NumPy + small helpers. We avoid heavy, model‑specific stacks by design.
+- Adapters: see `oscillink.adapters.*` for simple utilities (e.g., text embedding helpers). You can use any embedding pipeline you prefer.
+- Per‑model adjustments: for best results you may tune `kneighbors` and the lattice weights (`lamC`, `lamQ`) to your domain; the CLI `--tune` flag and the adaptive profile suite provide quick, data‑driven defaults.
+- Preprocessing: optional `smart_correct` can reduce incidental traps on noisy inputs (code/URL aware).
+
+This flexibility ensures Oscillink works with your existing stack without imposing a large dependency footprint.
 
 ### Option B: Cloud API (beta)
 ```bash
@@ -163,20 +157,110 @@ response = httpx.post(
 
 result = response.json()
 coherent_context = result["bundle"]  # Coherent, not just similar
+## Cloud feature flags and headers (beta)
+
+These toggles are off by default and safe to enable gradually. They only affect the cloud server.
+
+- Adaptive profiles (per-key tuning):
+	- Enable overrides: `OSCILLINK_ADAPTIVE_PROFILES=1`
+	- Enable learning (bounded EMA + epsilon-greedy): `OSCILLINK_ADAPTIVE_LEARN=1`
+	- Tuning knobs: `OSCILLINK_ADAPTIVE_ALPHA` (default `0.2`), `OSCILLINK_ADAPTIVE_EPS` (default `0.1`), `OSCILLINK_ADAPTIVE_MARGIN` (default `0.0`)
+	- Responses include `X-Profile-Id` header, and `meta.profile_id` in JSON.
+
+- Bundle cache (in-memory TTL LRU, per API key):
+	- Enable: `OSCILLINK_CACHE_ENABLE=1`
+	- TTL seconds: `OSCILLINK_CACHE_TTL` (default `300`)
+	- Per-key capacity: `OSCILLINK_CACHE_CAP` (default `128`)
+	- `/bundle` responses include `X-Cache: HIT|MISS`; on HIT also `X-Cache-Hits` and `X-Cache-Age`.
+
 audit_trail = result["receipt"]  # Deterministic proof
 ```
 
 ---
 
+## Proven Results
+
+### 🎯 Reduced hallucinations (developer‑verifiable)
+- On the included sample dataset, Oscillink reduced trap selections compared to a cosine baseline while maintaining competitive F1. See the chart below and reproduce with one command.
+
+<p align="center">
+	<img alt="Competitor vs Oscillink (F1, latency, hallucination)" src="assets/benchmarks/competitor_single.png" width="720"/>
+	<br/>
+	<sub>Generated by scripts/plot_benchmarks.py from scripts/competitor_benchmark.py output</sub>
+</p>
+
+Reproduce (Windows PowerShell):
+
+```powershell
+python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json --out benchmarks\competitor_sample.json
+python scripts/plot_benchmarks.py --competitor benchmarks\competitor_sample.json --out-dir assets\benchmarks
+```
+
+- Hallucination reduction: baseline shows traps present (1=yes), Oscillink default/tuned suppress them on this dataset while maintaining speed. Use your own data via the CLI to validate on your domain.
+
+### ⚡ Performance benchmarks and scaling
+
+- End‑to‑end latency typically under 40 ms at N≈1200 on a laptop (Python 3.11), with “light” receipts. Graph build and solve times scale smoothly with N.
+- Our scaling harness emits JSONL so you can plot your own curves. Example chart below shows mean timings vs N.
+
+<p align="center">
+	<img alt="Scaling curves" src="assets/benchmarks/scale_timing.png" width="720"/>
+	<br/>
+	<sub>Generated by scripts/plot_benchmarks.py from scripts/scale_benchmark.py output</sub>
+	</p>
+
+Reproduce on your machine and plot:
+
+```powershell
+python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
+python scripts/plot_benchmarks.py --scale benchmarks\scale.jsonl --out-dir assets\benchmarks
+```
+
+### 💼 Real‑world impact (representative)
+- Coherent retrieval reduces false citations in large corpora (see receipts for audit).
+- Autocorrect‑assisted preprocessing reduces incidental traps on noisy inputs.
+
+### Reproduce receipts and proofs
+
+```powershell
+pip install -e .[dev]
+python scripts\proof_hallucination.py --seed 123 --n 1200 --d 128
+```
+
+Example receipt (abridged):
+
+```json
+{
+	"state_sig": "sha256:9c1d…",
+	"energy": {
+		"H": 1.234,
+		"deltaH_total": -0.456,
+		"terms": {"data": 0.321, "graph": 0.789, "query": 0.124}
+	},
+	"params": {"kneighbors": 6, "lamG": 1.0, "lamC": 0.5, "lamQ": 4.0},
+	"timings_ms": {"build": 18.0, "settle": 10.2, "receipt": 3.1}
+}
+```
+
+---
+
+## How it compares to similarity‑only RAG
+
+- Coherence‑first context selection vs. nearest‑neighbor chunks — see the metrics above (controlled study).
+- Complementary: can sit alongside your existing RAG stack (reuse embeddings and vector store).
+- Latency reference: ≈10 ms settle, <40 ms E2E at N≈1200 on reference hardware.
+
+---
+
 ## Transform Your AI Applications
 
-### 🤖 Enhanced LLMs — Replace RAG with Coherent Memory
+### 🤖 Enhanced LLMs — Coherence‑first beyond similarity‑only RAG
 ```python
-# Before: RAG returns disconnected chunks
+# Before: Similarity‑only RAG may return disconnected chunks
 docs = vector_store.similarity_search(query, k=5)  # Just similar, not coherent
 context = "\n".join([d.page_content for d in docs])  # Hope it makes sense
 
-# After: Oscillink returns coherent context
+# After: Oscillink returns coherent context (see metrics below)
 from oscillink import Oscillink
 
 lattice = Oscillink(embeddings, kneighbors=6)
@@ -214,8 +298,8 @@ coherent_frames = frame_memory.bundle(k=10)  # Smooth transitions
 - No retraining required — instant upgrade
 - Model-agnostic: future-proof your AI stack
 
-### 🎯 Proven Hallucination Control  
-- **42.9% → 0%** hallucination rate in controlled studies
+### 🎯 Proven hallucination control  
+- Demonstrated improvements in a controlled study (see metrics above)
 - Deterministic, reproducible results
 - Signed receipts for audit trails
 
@@ -528,6 +612,32 @@ Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F
 
 ## Docs & examples
 
+## Real dataset CLI (terminal)
+
+Benchmark Oscillink on your own CSV/JSONL datasets from the terminal. The CLI compares a cosine baseline vs. Oscillink default vs. adaptive (with light tuning) and prints a JSON summary plus optional top‑k IDs.
+
+- Script: `scripts/real_benchmark.py`
+- Sample data: `examples/real_benchmark_sample.jsonl`
+
+Windows PowerShell examples:
+
+```powershell
+# JSONL format with explicit columns
+python scripts/real_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json
+
+# CSV format (if your file is CSV)
+python scripts/real_benchmark.py --input path\to\your.csv --format csv --text-col text --id-col id --label-col label --query-index 0 --k 10 --json
+
+# Show top-k IDs (omit --json for human-readable)
+python scripts/real_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --query-index 1 --k 5
+```
+
+Notes:
+- If `sentence-transformers` is installed, the script will use it to embed texts; otherwise it falls back to a deterministic hash embedder for quick smoke tests.
+- Outputs are printed to stdout and can be redirected to a file (e.g., `> results.json`).
+- For larger runs, prefer `--json` to capture metrics deterministically.
+
+
 - SDK API: `docs/API.md`
 - Math overview: `docs/MATH_OVERVIEW.md`
 - Receipts schema and examples: `docs/RECEIPTS.md`
@@ -550,6 +660,13 @@ _— Independent review_
 - Code of Conduct: see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
 - Webhooks: keep `OSCILLINK_ALLOW_UNVERIFIED_STRIPE` off in production and set `STRIPE_WEBHOOK_SECRET`; the server enforces signature verification and timestamp freshness by default.
 - Secrets: never commit `.env` files. Private env YAMLs under `cloud/` are git-ignored by default.
+
+## Privacy & data handling
+
+- SDK (local): does not transmit embeddings or content anywhere. All computation is in-process.
+- Cloud API: only processes data sent in the request; no training or retention beyond the request lifecycle unless you explicitly enable caching on your deployment.
+- Receipts: if requested, receipts include only derived numeric metrics (energy terms, timings) and a checksum of the lattice state, not raw content.
+- Operators: to avoid accidental retention in logs, ensure request bodies are excluded from logging. If enabling Redis/Firestore caches, evaluate your data retention policies and regional storage requirements.
 
 ## Support & branding
 

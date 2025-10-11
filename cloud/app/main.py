@@ -9,6 +9,7 @@ import smtplib
 import time
 import uuid
 from email.message import EmailMessage
+from collections import OrderedDict
 from typing import Any
 
 # Third-party
@@ -40,8 +41,11 @@ from .config import get_settings
 from .features import resolve_features
 from .keystore import InMemoryKeyStore, KeyMetadata, get_keystore  # type: ignore
 from .models import AdminKeyResponse, AdminKeyUpdate, HealthResponse, ReceiptResponse, SettleRequest
+from .learners import propose_overrides, record_observation
 from .redis_backend import get_with_ttl, incr_with_window, redis_enabled, set_with_ttl
 from .runtime_config import get_api_keys, get_quota_config, get_rate_limit
+from .autocorrect import router as autocorrect_router
+from .benchmarks import router as benchmarks_router
 
 app = FastAPI(title="Oscillink Cloud API", default_response_class=ORJSONResponse)
 
@@ -65,6 +69,10 @@ if _TRUSTED_HOSTS:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 if _FORCE_HTTPS:
     app.add_middleware(HTTPSRedirectMiddleware)
+
+# Optional routers
+app.include_router(autocorrect_router)
+app.include_router(benchmarks_router)
 
 MAX_BODY_BYTES = int(os.getenv("OSCILLINK_MAX_BODY_BYTES", "1048576"))  # 1MB default
 
@@ -435,6 +443,73 @@ async def rate_limit_mw(request: Request, call_next):
 _API_VERSION = get_settings().api_version  # capture at import for routing; other settings fetched dynamically
 _ENV_KEYS_FINGERPRINT = {"api_keys": os.getenv("OSCILLINK_API_KEYS", ""), "tiers": os.getenv("OSCILLINK_KEY_TIERS", "")}
 
+# ---------------- Bundle Cache (per-key, TTL LRU) -----------------
+_bundle_cache: dict[str, "OrderedDict[str, dict]"] = {}
+
+def _cache_enabled() -> bool:
+    return os.getenv("OSCILLINK_CACHE_ENABLE", "0").lower() in {"1", "true", "on", "yes"}
+
+def _cache_ttl() -> int:
+    try:
+        return max(1, int(os.getenv("OSCILLINK_CACHE_TTL", "300")))
+    except Exception:
+        return 300
+
+def _cache_cap() -> int:
+    try:
+        return max(1, int(os.getenv("OSCILLINK_CACHE_CAP", "128")))
+    except Exception:
+        return 128
+
+def _bundle_cache_get(api_key: str | None, sig: str):
+    if not (_cache_enabled() and api_key and sig):
+        return None
+    od = _bundle_cache.get(api_key)
+    if not isinstance(od, OrderedDict):
+        return None
+    rec = od.get(sig)
+    if not rec:
+        return None
+    # TTL check
+    try:
+        created = float(rec.get("created", 0.0))
+    except Exception:
+        created = 0.0
+    if time.time() - created > _cache_ttl():
+        try:
+            od.pop(sig, None)
+        except Exception:
+            pass
+        return None
+    # refresh LRU
+    try:
+        od.move_to_end(sig)
+    except Exception:
+        pass
+    # bump access count
+    try:
+        rec["hits"] = int(rec.get("hits", 0)) + 1
+    except Exception:
+        pass
+    return rec
+
+def _bundle_cache_put(api_key: str | None, sig: str, bundle: list[dict]):
+    if not (_cache_enabled() and api_key and sig and isinstance(bundle, list)):
+        return
+    od = _bundle_cache.get(api_key)
+    if not isinstance(od, OrderedDict):
+        od = OrderedDict()
+        _bundle_cache[api_key] = od
+    od[sig] = {"bundle": bundle, "created": time.time(), "hits": 0}
+    od.move_to_end(sig)
+    # enforce cap
+    cap = _cache_cap()
+    while len(od) > cap:
+        try:
+            od.popitem(last=False)
+        except Exception:
+            break
+
 # In-memory async job store (non-persistent, single-process)
 _jobs: dict[str, dict] = {}
 _JOB_TTL_SEC = 3600
@@ -655,11 +730,18 @@ def feature_context(x_api_key: str | None = Depends(api_key_guard)):
     features = resolve_features(meta)
     return {"api_key": x_api_key, "features": features}
 
+def _check_diffusion_allowed(req: SettleRequest, feats) -> None:
+    if req.gates is not None:
+        if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
+            raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
+        if not feats.diffusion_allowed:
+            raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
+
 @app.get("/health", response_model=HealthResponse)
 def health():
     return HealthResponse(status="ok", version=__version__)
 
-def _build_lattice(req: SettleRequest) -> tuple[OscillinkLattice, int, int, int]:
+def _build_lattice(req: SettleRequest, api_key: str | None = None) -> tuple[OscillinkLattice, int, int, int, dict, str]:
     Y = np.array(req.Y, dtype=np.float32)
     N, D = Y.shape
     if N == 0 or D == 0:
@@ -669,14 +751,26 @@ def _build_lattice(req: SettleRequest) -> tuple[OscillinkLattice, int, int, int]
         raise HTTPException(status_code=413, detail=f"N>{s.max_nodes} exceeds limit")
     if s.max_dim < D:
         raise HTTPException(status_code=413, detail=f"D>{s.max_dim} exceeds limit")
+    # Load adaptive profile overrides (cloud-only, optional) with exploration
+    profile_id, overrides = propose_overrides(api_key, base={
+        "lamG": req.params.lamG,
+        "lamC": req.params.lamC,
+        "lamQ": req.params.lamQ,
+        "kneighbors": req.params.kneighbors,
+    })
+    # Apply safe overrides
+    lamG = float(overrides.get("lamG", req.params.lamG))
+    lamC = float(overrides.get("lamC", req.params.lamC))
+    lamQ = float(overrides.get("lamQ", req.params.lamQ))
+    k_req = int(overrides.get("kneighbors", req.params.kneighbors))
     # Clamp kneighbors to avoid argpartition errors when requested >= N
-    k_eff = min(req.params.kneighbors, max(1, N - 1))
+    k_eff = min(k_req, max(1, N - 1))
     lat = OscillinkLattice(
         Y,
         kneighbors=k_eff,
-        lamG=req.params.lamG,
-        lamC=req.params.lamC,
-        lamQ=req.params.lamQ,
+        lamG=lamG,
+        lamC=lamC,
+        lamQ=lamQ,
         deterministic_k=req.params.deterministic_k,
         neighbor_seed=req.params.neighbor_seed,
     )
@@ -695,19 +789,51 @@ def _build_lattice(req: SettleRequest) -> tuple[OscillinkLattice, int, int, int]
             raise HTTPException(status_code=400, detail="chain must have >=2 nodes")
 
         lat.add_chain(req.chain, lamP=req.params.lamP)
-    return lat, N, D, k_eff
+    return lat, N, D, k_eff, {"lamG": lamG, "lamC": lamC, "lamQ": lamQ, "kneighbors": k_eff}, profile_id
+
+def _safe_record_observation(api_key: str | None, profile_id: str, eff_params: dict, stats: dict, tol: float):
+    if not api_key:
+        return
+    try:
+        record_observation(api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": eff_params["kneighbors"]}, {"duration_ms": float(stats.get("duration_ms", 0.0)), "iters": int(stats.get("iters", 0)), "residual": float(stats.get("residual", 0.0)), "tol": float(tol)})
+    except Exception:
+        pass
+
+def _compute_bundle_with_cache(lat: OscillinkLattice, k: int, api_key: str | None, profile_id: str, eff_params: dict, dt: float, max_iters: int, tol: float):
+    """Return (bundle, elapsed_seconds, cache_status, state_sig, cache_rec_optional).
+
+    Uses in-memory TTL LRU per-key cache keyed by state signature. On HIT, skips compute.
+    On MISS, runs settle+bundle, records learning best-effort, stores in cache, and updates metrics.
+    """
+    state_sig = lat._signature()
+    cache_rec = _bundle_cache_get(api_key, state_sig)
+    if cache_rec is not None and isinstance(cache_rec.get("bundle"), list):
+        return cache_rec["bundle"], 0.0, "HIT", state_sig, cache_rec
+    # Compute path
+    t0 = time.time()
+    settle_stats = lat.settle(dt=dt, max_iters=max_iters, tol=tol)
+    elapsed = time.time() - t0
+    SETTLE_COUNTER.labels(status="ok").inc()
+    SETTLE_LATENCY.observe(elapsed)
+    # Gauges will be set by caller for N/D
+    b = lat.bundle(k=k)
+    try:
+        _bundle_cache_put(api_key, state_sig, b)
+    except Exception:
+        pass
+    # Learning hook (best-effort)
+    try:
+        record_observation(api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": eff_params.get("kneighbors", k)}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(tol)})
+    except Exception:
+        pass
+    return b, elapsed, "MISS", state_sig, None
 
 @app.post(f"/{_API_VERSION}/settle", response_model=ReceiptResponse)
 def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends(feature_context)):
     x_api_key = ctx["api_key"]
     feats = ctx["features"]
-    # Enforce diffusion gating restriction (Experimental path)
-    if req.gates is not None:
-        if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
-            raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
-        if not feats.diffusion_allowed:
-            raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
-    lat, N, D, k_eff = _build_lattice(req)
+    _check_diffusion_allowed(req, feats)
+    lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
     units = N * D
     # Monthly cap enforcement (before quota window since it is a higher level allowance)
     monthly_ctx = _check_monthly_cap(x_api_key, units)
@@ -715,7 +841,7 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
 
     t0 = time.time()
     try:
-        lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+        settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
         elapsed = time.time() - t0
         SETTLE_COUNTER.labels(status="ok").inc()
     except Exception:
@@ -741,7 +867,8 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
         "D": int(D),
         "kneighbors_requested": req.params.kneighbors,
         "kneighbors_effective": k_eff,
-        "lam": {"G": req.params.lamG, "C": req.params.lamC, "Q": req.params.lamQ, "P": req.params.lamP},
+        "lam": {"G": eff_params["lamG"], "C": eff_params["lamC"], "Q": eff_params["lamQ"], "P": req.params.lamP},
+        "profile_id": profile_id,
     }
     sig_meta = receipt.get("meta", {}).get("state_sig") if (receipt and isinstance(receipt.get("meta"), dict)) else None
     state_sig = sig_meta or lat._signature()
@@ -755,6 +882,12 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
             "remaining": monthly_ctx["remaining"],
             "period": monthly_ctx["period"],
         }
+    # Learning hook (best-effort): record observation for EMA updates
+    try:
+        record_observation(x_api_key, profile_id, {**eff_params}, {"duration_ms": t_settle, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+    except Exception:
+        pass
+
     resp = ReceiptResponse(
         state_sig=state_sig,
         receipt=receipt,
@@ -771,6 +904,7 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
         response.headers.setdefault("X-Monthly-Period", str(monthly_ctx["period"]))
     for k, v in headers.items():
         response.headers.setdefault(k, v)
+    response.headers.setdefault("X-Profile-Id", profile_id)
     _append_usage({
         "ts": time.time(),
         "event": "settle",
@@ -794,19 +928,24 @@ def receipt(req: SettleRequest, request: Request, response: Response, ctx=Depend
             raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
         if not feats.diffusion_allowed:
             raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
-    lat, N, D, k_eff = _build_lattice(req)
+    lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
     units = N * D
     # Enforce monthly/quota BEFORE doing any compute to prevent free riding via failures after compute
     monthly_ctx = _check_monthly_cap(x_api_key, units)
     remaining, limit, reset_at = _check_and_consume_quota(x_api_key, units)
     t0 = time.time()
-    lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+    settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
     elapsed = time.time() - t0
     SETTLE_COUNTER.labels(status="ok").inc()
     SETTLE_LATENCY.observe(elapsed)
     SETTLE_N_GAUGE.set(N)
     SETTLE_D_GAUGE.set(D)
     rec = lat.receipt()
+    # Learning hook (best-effort)
+    try:
+        record_observation(x_api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": k_eff}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+    except Exception:
+        pass
     headers = _quota_headers(remaining, limit, reset_at)
     if monthly_ctx:
         response.headers.setdefault("X-Monthly-Cap", str(monthly_ctx["limit"]))
@@ -815,6 +954,7 @@ def receipt(req: SettleRequest, request: Request, response: Response, ctx=Depend
         response.headers.setdefault("X-Monthly-Period", str(monthly_ctx["period"]))
     for k, v in headers.items():
         response.headers.setdefault(k, v)
+    response.headers.setdefault("X-Profile-Id", profile_id)
     _append_usage({
         "ts": time.time(),
         "event": "receipt",
@@ -830,7 +970,7 @@ def receipt(req: SettleRequest, request: Request, response: Response, ctx=Depend
         "state_sig": rec.get("meta", {}).get("state_sig"),
         "receipt": rec,
         "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
+        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
     }
 
 @app.post(f"/{_API_VERSION}/bundle")
@@ -838,26 +978,27 @@ def bundle(req: SettleRequest, request: Request, response: Response, ctx=Depends
     """Return only the bundle (requires options.bundle_k)."""
     x_api_key = ctx["api_key"]
     feats = ctx["features"]
-    if req.gates is not None:
-        if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
-            raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
-        if not feats.diffusion_allowed:
-            raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
+    _check_diffusion_allowed(req, feats)
     if not req.options.bundle_k:
         raise HTTPException(status_code=400, detail="options.bundle_k must be set for /bundle")
-    lat, N, D, k_eff = _build_lattice(req)
+    lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
     units = N * D
     # Quota + monthly first (no compute before cost authorization)
     monthly_ctx = _check_monthly_cap(x_api_key, units)
     remaining, limit, reset_at = _check_and_consume_quota(x_api_key, units)
-    t0 = time.time()
-    lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
-    elapsed = time.time() - t0
-    SETTLE_COUNTER.labels(status="ok").inc()
-    SETTLE_LATENCY.observe(elapsed)
+    # N/D gauges are per-request characteristics; set before compute/helper
     SETTLE_N_GAUGE.set(N)
     SETTLE_D_GAUGE.set(D)
-    b = lat.bundle(k=req.options.bundle_k)
+    b, elapsed, cache_status, state_sig, cache_rec = _compute_bundle_with_cache(
+        lat,
+        req.options.bundle_k,
+        x_api_key,
+        profile_id,
+        eff_params,
+        req.options.dt,
+        req.options.max_iters,
+        req.options.tol,
+    )
     headers = _quota_headers(remaining, limit, reset_at)
     if monthly_ctx:
         response.headers.setdefault("X-Monthly-Cap", str(monthly_ctx["limit"]))
@@ -866,6 +1007,16 @@ def bundle(req: SettleRequest, request: Request, response: Response, ctx=Depends
         response.headers.setdefault("X-Monthly-Period", str(monthly_ctx["period"]))
     for k, v in headers.items():
         response.headers.setdefault(k, v)
+    response.headers.setdefault("X-Profile-Id", profile_id)
+    # Cache headers
+    try:
+        response.headers.setdefault("X-Cache", cache_status)
+        if cache_status == "HIT" and cache_rec is not None:
+            response.headers.setdefault("X-Cache-Hits", str(int(cache_rec.get("hits", 0))))
+            age = time.time() - float(cache_rec.get("created", time.time()))
+            response.headers.setdefault("X-Cache-Age", str(int(age)))
+    except Exception:
+        pass
     _append_usage({
         "ts": time.time(),
         "event": "bundle",
@@ -878,10 +1029,10 @@ def bundle(req: SettleRequest, request: Request, response: Response, ctx=Depends
         "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}
     })
     return {
-        "state_sig": lat._signature(),
+        "state_sig": state_sig,
         "bundle": b,
         "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
+        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
     }
 
 ## Removed earlier draft Stripe webhook stub; consolidated full implementation later in file.
@@ -898,19 +1049,24 @@ def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=
             raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
     if not req.chain:
         raise HTTPException(status_code=400, detail="chain must be provided")
-    lat, N, D, k_eff = _build_lattice(req)
+    lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
     units = N * D
     # Enforce billing constraints prior to compute
     monthly_ctx = _check_monthly_cap(x_api_key, units)
     remaining, limit, reset_at = _check_and_consume_quota(x_api_key, units)
     t0 = time.time()
-    lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+    settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
     elapsed = time.time() - t0
     SETTLE_COUNTER.labels(status="ok").inc()
     SETTLE_LATENCY.observe(elapsed)
     SETTLE_N_GAUGE.set(N)
     SETTLE_D_GAUGE.set(D)
     rec = lat.chain_receipt(req.chain)
+    # Learning hook (best-effort)
+    try:
+        record_observation(x_api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": k_eff}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+    except Exception:
+        pass
     headers = _quota_headers(remaining, limit, reset_at)
     if monthly_ctx:
         response.headers.setdefault("X-Monthly-Cap", str(monthly_ctx["limit"]))
@@ -919,6 +1075,7 @@ def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=
         response.headers.setdefault("X-Monthly-Period", str(monthly_ctx["period"]))
     for k, v in headers.items():
         response.headers.setdefault(k, v)
+    response.headers.setdefault("X-Profile-Id", profile_id)
     _append_usage({
         "ts": time.time(),
         "event": "chain_receipt",
@@ -934,7 +1091,7 @@ def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=
         "state_sig": lat._signature(),
         "chain_receipt": rec,
         "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
+        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
     }
 
 @app.get("/metrics")
@@ -1286,7 +1443,7 @@ def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request
 
     def run_job():
         try:
-            lat, N, D, k_eff = _build_lattice(req)
+            lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
             # Quota check occurs at execution time to avoid holding quota for queued jobs
             try:
                 units = N * D
@@ -1296,7 +1453,7 @@ def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request
                 _jobs[job_id] = {"status": "error", "error": he.detail, "created": created, "quota_error": True}
                 return
             t0 = time.time()
-            lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+            settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
             elapsed = time.time() - t0
             rec = lat.receipt() if req.options.include_receipt else None
             bundle = lat.bundle(k=req.options.bundle_k) if req.options.bundle_k else None
@@ -1311,9 +1468,14 @@ def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request
                     "receipt": rec,
                     "bundle": bundle,
                     "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-                    "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}}
+                    "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}}
                 }
             }
+            # Learning hook (best-effort)
+            try:
+                record_observation(x_api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": k_eff}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+            except Exception:
+                pass
             _append_usage({
                 "ts": time.time(),
                 "event": "job_settle",

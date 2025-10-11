@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 from typing import Any, Dict, List, Optional, cast
+from collections import deque
 
 import numpy as np
 
@@ -60,6 +61,7 @@ class OscillinkLattice:
         self._kneighbors = k_eff
         self._deterministic_k = bool(deterministic_k)
         self._neighbor_seed = neighbor_seed
+        self._row_cap_val = float(row_cap_val)
         t_build0 = time.time()
         A = mutual_knn_adj(
             self.Y,
@@ -67,7 +69,7 @@ class OscillinkLattice:
             deterministic=self._deterministic_k,
             seed=self._neighbor_seed,
         )
-        self.A = row_sum_cap(A, row_cap_val)
+        self.A = row_sum_cap(A, self._row_cap_val)
         self.L_sym, self.sqrt_deg = normalized_laplacian(self.A)
         self._graph_build_ms = 1000.0 * (time.time() - t_build0)
 
@@ -91,6 +93,10 @@ class OscillinkLattice:
         self._receipt_secret: Optional[bytes] = None
         # signature mode: 'minimal' (default) or 'extended'
         self._signature_mode: str = "minimal"
+        # receipt detail mode: 'full' (default) computes all diagnostics; 'light' skips heavy per-node/nulls
+        self._receipt_detail: str = "full"
+        # last dynamics (optional): populated when OSCILLINK_RECEIPT_DYNAMICS is enabled and settle() is called
+        self._last_dynamics: Optional[Dict[str, Any]] = None
         self._log("init", {
             "N": self.N, "D": self.D, "kneighbors_requested": kneighbors, "kneighbors_effective": k_eff,
             "deterministic_k": self._deterministic_k, "neighbor_seed": self._neighbor_seed
@@ -149,8 +155,12 @@ class OscillinkLattice:
         max_iters: int = 12,
         tol: float = 1e-3,
         precond: str = "jacobi",
+        *,
+        warm_start: bool = True,
+        inertia: float = 0.0,
     ) -> Dict[str, Any]:
         """Implicit Euler step: (I + dt M) U^+ = U + dt (lamG Y + lamQ B 1 psi^T)."""
+        U_prev = self.U.copy()
         RHS = self.lamG * self.Y + self.lamQ * (self.B_diag[:, None] * self.psi[None, :])
 
         def A_mul(X: np.ndarray) -> np.ndarray:
@@ -175,10 +185,13 @@ class OscillinkLattice:
             M_diag = 1.0 + dt * diag_base
 
         t0 = time.time()
+        # Choose starting point: cold start, warm start, or inertial blend
+        x0 = self._choose_start_x0(warm_start=warm_start, inertia=inertia)
+
         U_plus, iters, res = cg_solve(
             A_mul,
             b,
-            x0=self.U,
+            x0=x0,
             M_diag=M_diag,
             tol=tol,
             max_iters=max_iters,
@@ -188,6 +201,15 @@ class OscillinkLattice:
         self._log("settle", self.last)
         if res > tol * 10:  # loose heuristic: significantly above desired tolerance
             self._log("settle_convergence_warn", {"res": float(res), "tol": tol, "iters": int(iters)})
+        # Optional dynamics metrics (gated by env flag)
+        try:
+            import os as _os
+            dyn_flag = _os.getenv("OSCILLINK_RECEIPT_DYNAMICS", "0").strip().lower()
+            if dyn_flag in {"1", "true", "yes"}:
+                self._last_dynamics = self._compute_dynamics(U_prev, self.U, int(iters))
+        except Exception:
+            # Never break settle path for optional diagnostics
+            self._last_dynamics = None
         # callbacks
         if self._settle_callbacks:
             for cb in list(self._settle_callbacks):  # copy to allow modification inside cb
@@ -253,6 +275,7 @@ class OscillinkLattice:
     def receipt(self) -> Dict[str, Any]:
         from .. import __version__ as pkg_version
         Ustar = self.solve_Ustar()
+        # Always compute core energy delta; conditionally compute heavier diagnostics based on detail mode
         dH = deltaH_trace(
             self.U,
             Ustar,
@@ -264,19 +287,25 @@ class OscillinkLattice:
             self.lamP,
             self.L_path,
         )
-        coh_drop, anchor_pen, query_term = per_node_components(
-            self.Y,
-            Ustar,
-            self.A,
-            self.L_sym,
-            self.sqrt_deg,
-            self.lamG,
-            self.lamC,
-            self.lamQ,
-            self.B_diag,
-            self.psi,
-        )
-        nulls_full = null_points(Ustar, self.A, self.sqrt_deg, self.lamC, z_th=3.0)
+        if self._receipt_detail == "light":
+            coh_drop = np.zeros(self.N, dtype=np.float32)
+            anchor_pen = np.zeros(self.N, dtype=np.float32)
+            query_term = np.zeros(self.N, dtype=np.float32)
+            nulls_full = []
+        else:
+            coh_drop, anchor_pen, query_term = per_node_components(
+                self.Y,
+                Ustar,
+                self.A,
+                self.L_sym,
+                self.sqrt_deg,
+                self.lamG,
+                self.lamC,
+                self.lamQ,
+                self.B_diag,
+                self.psi,
+            )
+            nulls_full = null_points(Ustar, self.A, self.sqrt_deg, self.lamC, z_th=3.0)
         # Null-point capping (observability control)
         import os as _os
         cap_raw = _os.getenv("OSCILLINK_RECEIPT_NULL_CAP", "0").strip()
@@ -313,6 +342,7 @@ class OscillinkLattice:
             "gates_uniform": bool(np.allclose(self.B_diag, self.B_diag[0])),
             # deterministic lattice signature (added for parity with cloud endpoints & docs)
             "state_sig": self._signature(),
+            "receipt_detail": self._receipt_detail,
             # null point summary
             "null_points_summary": null_meta,
         }
@@ -355,6 +385,14 @@ class OscillinkLattice:
             "null_points": nulls,
             "meta": meta,
         }
+        # Optionally include last dynamics snapshot under meta when enabled
+        try:
+            import os as _os
+            dyn_flag = _os.getenv("OSCILLINK_RECEIPT_DYNAMICS", "0").strip().lower()
+            if dyn_flag in {"1", "true", "yes"} and getattr(self, "_last_dynamics", None) is not None:
+                meta["dynamics"] = self._last_dynamics
+        except Exception:
+            pass
         self._log("receipt", {"deltaH_total": out["deltaH_total"], "ustar_cached": meta["ustar_cached"]})
         return out
 
@@ -635,6 +673,55 @@ class OscillinkLattice:
         self._Ustar_sig = None
         self._log("invalidate_cache", {})
 
+    def _choose_start_x0(self, *, warm_start: bool, inertia: float) -> np.ndarray:
+        """Select CG initial guess x0 based on warm_start/inertia flags."""
+        if not warm_start:
+            return self.Y
+        w = float(max(0.0, min(1.0, inertia)))
+        if w <= 0.0:
+            return self.U
+        return ((1.0 - w) * self.Y + w * self.U).astype(np.float32)
+
+    def rebuild_graph(
+        self,
+        *,
+        row_cap_val: Optional[float] = None,
+        kneighbors: Optional[int] = None,
+        deterministic_k: Optional[bool] = None,
+        neighbor_seed: Optional[int] = None,
+    ) -> None:
+        """Rebuild adjacency and Laplacian with optional new parameters.
+
+        Parameters are optional; unspecified values reuse current settings. Invalidates U* cache and updates timing.
+        """
+        # Update config
+        if row_cap_val is not None:
+            self._row_cap_val = float(row_cap_val)
+        if kneighbors is not None:
+            self._kneighbors = min(int(kneighbors), max(1, self.N - 1))
+        if deterministic_k is not None:
+            self._deterministic_k = bool(deterministic_k)
+        if neighbor_seed is not None:
+            self._neighbor_seed = neighbor_seed
+        # Rebuild
+        t_build0 = time.time()
+        A = mutual_knn_adj(
+            self.Y,
+            k=self._kneighbors,
+            deterministic=self._deterministic_k,
+            seed=self._neighbor_seed,
+        )
+        self.A = row_sum_cap(A, self._row_cap_val)
+        self.L_sym, self.sqrt_deg = normalized_laplacian(self.A)
+        self._graph_build_ms = 1000.0 * (time.time() - t_build0)
+        self._invalidate_cache()
+        self._log("rebuild_graph", {
+            "k": int(self._kneighbors),
+            "row_cap_val": float(self._row_cap_val),
+            "deterministic_k": self._deterministic_k,
+            "neighbor_seed": self._neighbor_seed,
+        })
+
     def _coherence_drop(self, Ustar: np.ndarray) -> np.ndarray:
         """Compute per-node coherence drop term reused across receipt diagnostics and ranking."""
         Yn = self.Y / (self.sqrt_deg[:, None] + 1e-12)
@@ -655,6 +742,97 @@ class OscillinkLattice:
                 udiff = ui - Un[j]
                 coh[i] += 0.5 * self.lamC * w * (float(ydiff @ ydiff) - float(udiff @ udiff))
         return coh
+
+    # --- Dynamics metrics (optional) ---
+    def _compute_dynamics(self, U_prev: np.ndarray, U_next: np.ndarray, iters: int) -> Dict[str, Any]:
+        """Compute a single-step dynamics snapshot.
+
+        Metrics:
+          - temperature: mean(||ΔU||^2) across nodes
+          - viscosity_step: iters / ΔH_step (ΔH between U_prev and U_next via deltaH_trace)
+          - flow: per-edge energy drop in structural term, with top edges
+          - coherence_radius: max graph hop distance reached by activated nodes (|ΔU_i| above threshold)
+        """
+        # Movement / temperature
+        dU = (U_next - U_prev).astype(np.float32)
+        move2 = np.sum(dU * dU, axis=1)  # per-node squared movement
+        temperature = float(np.mean(move2))
+
+        # Step energy drop (approximate) and viscosity
+        dH_step = float(deltaH_trace(U_prev, U_next, self.lamG, self.lamC, self.L_sym, self.lamQ, self.B_diag, self.lamP, self.L_path))
+        viscosity_step = float(iters) / (abs(dH_step) + 1e-12)
+
+        # Coherence flow on edges: drop in structural pairwise energy
+        di = self.sqrt_deg + 1e-12
+        Up = U_prev / di[:, None]
+        Un = U_next / di[:, None]
+        nz = np.argwhere(self.A > 0)
+        flows: List[Dict[str, Any]] = []
+        flow_total = 0.0
+        # Limit top edges kept to avoid huge payloads
+        TOP_K = 16
+        for (i, j) in nz:
+            i_i, j_i = int(i), int(j)
+            w = float(self.A[i_i, j_i])
+            if w <= 0.0 or i_i == j_i:
+                continue
+            ydiff_prev = Up[i_i] - Up[j_i]
+            ydiff_next = Un[i_i] - Un[j_i]
+            e_prev = 0.5 * self.lamC * w * float(ydiff_prev @ ydiff_prev)
+            e_next = 0.5 * self.lamC * w * float(ydiff_next @ ydiff_next)
+            f = max(0.0, e_prev - e_next)
+            if f > 0.0:
+                flow_total += f
+                flows.append({"edge": [i_i, j_i], "flow": float(f)})
+        # Top flows by magnitude
+        if flows:
+            flows.sort(key=lambda e: e["flow"], reverse=True)
+            flows = flows[:TOP_K]
+
+        # Coherence radius via BFS from highly affected nodes
+        inf = np.sqrt(move2 + 1e-12)
+        if inf.size == 0 or float(np.max(inf)) <= 1e-9:
+            radius = 0
+        else:
+            thr = 0.1 * float(np.max(inf))
+            seeds = [int(i) for i in np.where(inf >= thr)[0].tolist()]
+            radius = self._bfs_radius(seeds)
+
+        return {
+            "temperature": temperature,
+            "step_deltaH": dH_step,
+            "viscosity_step": viscosity_step,
+            "flow_total": float(flow_total),
+            "top_flows": flows,
+            "radius": int(radius),
+            # quick movement stats
+            "move2_mean": float(np.mean(move2) if move2.size else 0.0),
+            "move2_max": float(np.max(move2) if move2.size else 0.0),
+        }
+
+    def _bfs_radius(self, seeds: List[int]) -> int:
+        if not seeds:
+            return 0
+        N = self.N
+        visited = np.full(N, False)
+        dist = np.full(N, -1, dtype=int)
+        q: deque[int] = deque()
+        for s in seeds:
+            if 0 <= s < N and not visited[s]:
+                visited[s] = True
+                dist[s] = 0
+                q.append(s)
+        # build adjacency lists for speed
+        neighbors = [np.where(self.A[i] > 0)[0].astype(int).tolist() for i in range(N)]
+        while q:
+            u = q.popleft()
+            for v in neighbors[u]:
+                if not visited[v]:
+                    visited[v] = True
+                    dist[v] = dist[u] + 1
+                    q.append(v)
+        # radius among reached nodes
+        return int(np.max(dist)) if np.any(dist >= 0) else 0
 
     # --- Logging API ---
     def set_logger(self, logger_callable) -> None:
@@ -690,6 +868,19 @@ class OscillinkLattice:
         if m not in {"minimal", "extended"}:
             raise ValueError("mode must be 'minimal' or 'extended'")
         self._signature_mode = m
+
+    def set_receipt_detail(self, mode: str) -> None:
+        """Configure receipt detail level.
+
+        mode:
+          - 'full' (default): includes per-node diagnostics (coh_drop, anchor_pen, query_term) and null points
+          - 'light': skips heavy per-node and null point computations (fast path)
+        Any other value raises ValueError.
+        """
+        m = mode.lower().strip()
+        if m not in {"full", "light"}:
+            raise ValueError("mode must be 'full' or 'light'")
+        self._receipt_detail = m
 
     # --- Representation ---
     def __repr__(self) -> str:  # pragma: no cover (formatting deterministic & simple)

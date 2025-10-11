@@ -21,13 +21,14 @@ import argparse
 import json
 import statistics as stats
 import time
+import tracemalloc
 
 import numpy as np
 
 from oscillink import OscillinkLattice, compute_diffusion_gates
 
 
-def run_once(N: int, D: int, kneighbors: int, lamG: float, lamC: float, lamQ: float, lamP: float, chain_len: int, seed: int):
+def run_once(N: int, D: int, kneighbors: int, lamG: float, lamC: float, lamQ: float, lamP: float, chain_len: int, seed: int, memprof: bool = False, receipt_detail: str = "full"):
     rs = np.random.RandomState(seed)
     Y = rs.randn(N, D).astype(np.float32)
     psi = (Y[: min(32, N)].mean(axis=0)).astype(np.float32)
@@ -38,6 +39,9 @@ def run_once(N: int, D: int, kneighbors: int, lamG: float, lamC: float, lamQ: fl
     build_ms = 1000 * (time.time() - t0)
 
     lat.set_query(psi)
+    set_receipt = getattr(lat, "set_receipt_detail", None)
+    if callable(set_receipt):
+        set_receipt(receipt_detail)
     chain = list(range(0, min(chain_len, N))) if chain_len >= 2 else None
     if chain and lamP > 0:
         lat.add_chain(chain, lamP=lamP)
@@ -49,6 +53,11 @@ def run_once(N: int, D: int, kneighbors: int, lamG: float, lamC: float, lamQ: fl
     t2 = time.time()
     rec = lat.receipt()
     receipt_ms = 1000 * (time.time() - t2)
+    peak_mb = None
+    if memprof:
+        # Measure peak memory after main ops (requires start/stop around run in caller)
+        current, peak = tracemalloc.get_traced_memory()
+        peak_mb = float(peak) / 1024.0 / 1024.0
 
     chain_receipt = None
     weakest = None
@@ -73,6 +82,7 @@ def run_once(N: int, D: int, kneighbors: int, lamG: float, lamC: float, lamQ: fl
         "N": N,
         "D": D,
         "kneighbors": kneighbors,
+        **({"peak_mb": peak_mb} if peak_mb is not None else {}),
     }
 
 
@@ -89,13 +99,17 @@ def main():
     ap.add_argument("--chain-len", type=int, default=8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json", action="store_true", help="Emit JSON with per-trial / proof stats")
+    ap.add_argument("--receipt-mode", dest="receipt_mode", type=str, default="full", choices=["full","light"], help="Receipt detail level for timing")
+    ap.add_argument("--memprof", action="store_true", help="Capture peak memory via tracemalloc and include in output")
     ap.add_argument("--proof", action="store_true", help="Run single-run proof output (energy, chain, nulls)")
     ap.add_argument("--bundle-k", type=int, default=0, help="When >0 in proof mode, also compute bundle and mean alignment")
     ap.add_argument("--diffusion", action="store_true", help="Compare diffusion gating (proof mode only)")
     args = ap.parse_args()
 
     if args.proof:
-        rows = [run_once(args.N, args.D, args.kneighbors, args.lamG, args.lamC, args.lamQ, args.lamP, args.chain_len, args.seed)]
+        if args.memprof:
+            tracemalloc.start()
+        rows = [run_once(args.N, args.D, args.kneighbors, args.lamG, args.lamC, args.lamQ, args.lamP, args.chain_len, args.seed, memprof=args.memprof, receipt_detail=args.receipt_mode)]
         proof_row = rows[0]
         bundle_align_mean = None
         bundle = None
@@ -158,6 +172,8 @@ def main():
         if bundle_align_mean is not None:
             print(f"bundle mean align: {bundle_align_mean:.4f}")
         print(f"settle_ms={proof_row['settle_ms']:.2f}")
+        if args.memprof and rows and rows[0].get("peak_mb") is not None:
+            print(f"peak_memory={rows[0]['peak_mb']:.1f} MB")
         if diffusion_block:
             print(f"diffusion ΔH={diffusion_block['diffusion_deltaH']:.3f} vs uniform ΔH={diffusion_block['uniform_deltaH']:.3f}")
             print("gates min={gate_min:.3f} max={gate_max:.3f} mean={gate_mean:.3f}".format(**diffusion_block))
@@ -165,8 +181,10 @@ def main():
         return
 
     rows = []
+    if args.memprof:
+        tracemalloc.start()
     for t in range(args.trials):
-        rows.append(run_once(args.N, args.D, args.kneighbors, args.lamG, args.lamC, args.lamQ, args.lamP, args.chain_len, args.seed + t))
+        rows.append(run_once(args.N, args.D, args.kneighbors, args.lamG, args.lamC, args.lamQ, args.lamP, args.chain_len, args.seed + t, memprof=args.memprof, receipt_detail=args.receipt_mode))
 
     def agg(key):
         vals = [r[key] for r in rows]
@@ -177,8 +195,12 @@ def main():
             "mean": float(stats.mean([r[k] for r in rows])),
             "stdev": float(stats.pstdev([r[k] for r in rows])) if len(rows) > 1 else 0.0
         } for k in ["build_ms","settle_ms","receipt_ms","deltaH","ustar_iters","ustar_res"]}
+        if args.memprof and any("peak_mb" in r for r in rows):
+            pm = [r.get("peak_mb") for r in rows if r.get("peak_mb") is not None]
+            if pm:
+                aggregates["peak_mb"] = {"mean": float(stats.mean(pm)), "stdev": float(stats.pstdev(pm)) if len(pm) > 1 else 0.0}
         payload = {
-            "config": {"N": args.N, "D": args.D, "kneighbors": args.kneighbors, "trials": args.trials, "lamG": args.lamG, "lamC": args.lamC, "lamQ": args.lamQ, "lamP": args.lamP, "chain_len": args.chain_len},
+            "config": {"N": args.N, "D": args.D, "kneighbors": args.kneighbors, "trials": args.trials, "lamG": args.lamG, "lamC": args.lamC, "lamQ": args.lamQ, "lamP": args.lamP, "chain_len": args.chain_len, "receipt_mode": args.receipt_mode},
             "trials": rows,
             "aggregates": aggregates,
             "converged_all": all(r["ustar_converged"] for r in rows),

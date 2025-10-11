@@ -135,9 +135,9 @@ def _solve_screened_diffusion(L_sym: np.ndarray, gamma: float, s: np.ndarray, *,
         # Jacobi preconditioner: diag(L_sym) + gamma
         M_diag = np.diag(L_sym).astype(np.float32) + float(gamma)
         def A_mul(x: np.ndarray) -> np.ndarray:
-            x2 = x[:, None] if x.ndim == 1 else x
+            x2 = x if x.ndim == 2 else x[:, None]
             out = (L_sym @ x2) + gamma * x2
-            return out.squeeze()
+            return out if x.ndim == 2 else out.squeeze()
         try:
             h, _iters, _res = cg_solve(A_mul, s.astype(np.float32), x0=None, M_diag=M_diag, tol=tol, max_iters=max_iters)
             return h.astype(np.float32)

@@ -24,6 +24,9 @@ def run_case(N: int, D: int, k: int, trials: int, seed: int):
     Y = rs.randn(N, D).astype(np.float32)
     psi = rs.randn(D).astype(np.float32)
     lat = OscillinkLattice(Y, kneighbors=k, deterministic_k=True)
+    # Use light receipt detail to avoid O(N^2) diagnostics (null points, per-node components)
+    # which can cause large memory usage at higher N during scaling benchmarks.
+    lat.set_receipt_detail("light")
     lat.set_query(psi/ (np.linalg.norm(psi)+1e-12))
     lat.add_chain(list(range(min(4, N)))) if N >= 4 else None
     # warm settle

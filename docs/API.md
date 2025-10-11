@@ -24,3 +24,12 @@ Pass/fail verdict, weakest link, per‑edge z‑scores, chain coherence gain.
 
 ## `bundle(k=8, alpha=0.5)`
 Return top‑k items ranked by blended coherence + alignment, MMR‑diversified.
+
+### Cloud-specific headers and flags
+
+When using the cloud API server, responses may include these headers when enabled via env flags:
+
+- Adaptive profiles: `X-Profile-Id` (also present as `meta.profile_id`), gated by `OSCILLINK_ADAPTIVE_PROFILES` and `OSCILLINK_ADAPTIVE_LEARN`.
+- Bundle caching (/bundle): `X-Cache: HIT|MISS`; on HIT also `X-Cache-Hits` and `X-Cache-Age`. Gated by `OSCILLINK_CACHE_ENABLE`, with `OSCILLINK_CACHE_TTL` and `OSCILLINK_CACHE_CAP`.
+
+See README section "Cloud feature flags and headers (beta)" for details.

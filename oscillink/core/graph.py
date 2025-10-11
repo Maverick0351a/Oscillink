@@ -27,6 +27,11 @@ def mutual_knn_adj(
         similarity ties deterministically without a full sort.
     """
     N = Y.shape[0]
+    if N <= 1:
+        # Degenerate case: no neighbors possible
+        return np.zeros((N, N), dtype=np.float32)
+    # Clamp k to valid range [1, N-1]
+    k = int(max(1, min(k, N - 1)))
     Yn = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-12)
     S = Yn @ Yn.T
     np.fill_diagonal(S, -np.inf)
