@@ -10,10 +10,6 @@
 
 
 <p align="center">
-	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
-</p>
-
-<p align="center">
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 	<br/><br/>
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
@@ -21,6 +17,10 @@
 	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
+</p>
+
+<p align="center">
+	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
 </p>
 
 <p align="center"><i>Current: v0.1.9 • API v1 • Cloud: beta</i></p>
