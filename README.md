@@ -8,6 +8,11 @@
 	<b>🚀 Instant upgrade for any model</b> • <b>🎯 42.9% → 0% hallucination rate</b> • <b>⚡ 10ms latency</b> • <b>🔐 Deterministic receipts</b>
 </p>
 
+
+<p align="center">
+	<img alt="Oscillink" src="assets/oscillink_hero.svg" width="640"/>
+</p>
+
 <p align="center">
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 	<br/><br/>
@@ -16,6 +21,8 @@
 	<a href="https://pypi.org/project/oscillink/0.1.9/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 </p>
+
+<p align="center"><i>Current: v0.1.9 • API v1 • Cloud: beta</i></p>
 
 ---
 
@@ -613,6 +620,19 @@ Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F
 
 - Redis not used despite being configured
 	- Set `OSCILLINK_STATE_BACKEND=redis` and provide `OSCILLINK_REDIS_URL` (or `REDIS_URL`); see `docs/REDIS_BACKEND.md`
+
+## Error taxonomy (quick reference)
+
+- API 422 Unprocessable Entity
+	- Payload shape/type mismatch (e.g., Y not list-of-list float); ensure `Y: (N,D)` and `psi: (D,)`
+- API 429 Too Many Requests
+	- Rate/quota exceeded; inspect `X-Quota-*`, `X-RateLimit-*`, `X-IPLimit-*` headers for reset timing
+- API 403 Unauthorized
+	- Missing/invalid `X-API-Key`, or suspended key
+- SDK ValueError
+	- Non-finite values or mismatched dimensionality; ensure float32, unit-ish norms recommended
+- Webhook signature error
+	- Verify `STRIPE_WEBHOOK_SECRET`, check server clock, and `OSCILLINK_STRIPE_MAX_AGE`
 
 ## Contributing & License
 
