@@ -1,0 +1,166 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+    
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "10.0.0" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "10.0.0" },
+    { "type": "panel", "id": "bargauge", "name": "Bar gauge", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "2.9.0" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Settle requests /s",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(oscillink_settle_requests_total[5m]))",
+          "legendFormat": "requests/s"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "P95 settle latency (ms)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * histogram_quantile(0.95, sum(rate(oscillink_settle_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Job queue depth",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(oscillink_job_queue_depth)",
+          "legendFormat": "jobs"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Units processed /s (node·dim)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(oscillink_usage_node_dim_units_total[5m]))",
+          "legendFormat": "units/s"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Settle requests by status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "req/s" }, "overrides": [] },
+      "targets": [
+        { "refId": "ok", "expr": "sum by (status) (rate(oscillink_settle_requests_total{status=\"ok\"}[5m]))", "legendFormat": "ok" },
+        { "refId": "error", "expr": "sum by (status) (rate(oscillink_settle_requests_total{status=\"error\"}[5m]))", "legendFormat": "error" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Settle latency quantiles (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        { "refId": "p50", "expr": "1000 * histogram_quantile(0.50, sum(rate(oscillink_settle_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "refId": "p95", "expr": "1000 * histogram_quantile(0.95, sum(rate(oscillink_settle_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "refId": "p99", "expr": "1000 * histogram_quantile(0.99, sum(rate(oscillink_settle_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Stripe webhook events by result",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "1/s" }, "overrides": [] },
+      "targets": [
+        { "refId": "processed", "expr": "sum by (result) (rate(oscillink_stripe_webhook_events_total{result=\"processed\"}[5m]))", "legendFormat": "processed" },
+        { "refId": "ignored", "expr": "sum by (result) (rate(oscillink_stripe_webhook_events_total{result=\"ignored\"}[5m]))", "legendFormat": "ignored" },
+        { "refId": "duplicate", "expr": "sum by (result) (rate(oscillink_stripe_webhook_events_total{result=\"duplicate\"}[5m]))", "legendFormat": "duplicate" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Nodes and units processed",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "1/s" }, "overrides": [] },
+      "targets": [
+        { "refId": "nodes", "expr": "sum(rate(oscillink_usage_nodes_total[5m]))", "legendFormat": "nodes/s" },
+        { "refId": "units", "expr": "sum(rate(oscillink_usage_node_dim_units_total[5m]))", "legendFormat": "units/s" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["oscillink", "prometheus", "ai", "latency"],
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(oscillink_settle_requests_total, instance)",
+        "refresh": 1,
+        "hide": 2,
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"] },
+  "timezone": "",
+  "title": "Oscillink Cloud — Ops & Analytics",
+  "uid": null,
+  "version": 1,
+  "weekStart": ""
+}
