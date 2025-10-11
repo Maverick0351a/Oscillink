@@ -2,9 +2,7 @@
 
 **Give ANY generative AI model coherent memory — turning random generators into consistent creative partners.**
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/Maverick0351a/Oscillink/main/assets/oscillink_hero.svg" alt="Oscillink" width="720" />
-</p>
+
 
 <p align="center">
 	<b>🚀 Instant upgrade for any model</b> • <b>🎯 42.9% → 0% hallucination rate</b> • <b>⚡ 10ms latency</b> • <b>🔐 Deterministic receipts</b>
