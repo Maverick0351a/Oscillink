@@ -9,7 +9,7 @@ description = "Oscillink Lattice — Short-Term Coherence SDK (physics-inspired 
 authors = [{name="Oscillink", email="contact@oscillink.com"}]
 maintainers = [{name = "Travis Johnson", email = "travisjohnson@oscillink.com"}]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 dependencies = [
   "numpy>=1.22,<3.0",
@@ -25,7 +25,6 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -102,7 +101,7 @@ oscillink = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 exclude = [
   "**/*.ipynb",  # exclude Jupyter notebooks from linting
 ]
@@ -113,7 +112,8 @@ select = ["E","F","I","UP","B","N","SIM","C90"]
 ignore = [
   "N802","N803","N806",  # naming
   "N815",  # allow lamG/lamC/lamQ/lamP parameter style (domain-specific symbols)
-  "UP035","UP006","UP037","UP045",  # typing modernization / union pipe (needs py310); keep Optional for py39 clarity
+  "UP035","UP006","UP037","UP045","UP038",  # selectively keep some typing modernizations disabled
+  "B905",  # don't require zip(strict=) yet in all examples/scripts
   "B008",  # FastAPI Depends pattern acceptable for this project
   "SIM105","SIM910",  # optional stylistic simplifications
   "E501"  # allow longer lines (benchmark/log payload clarity & doc tables); revisit later
@@ -125,7 +125,7 @@ ignore = [
 "scripts/proof_hallucination.py" = ["C901"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_unused_ignores = true
 pretty = true
 

@@ -128,12 +128,12 @@ receipt = lattice.receipt()  # Audit trail with energy metrics
 ```
 
 Requirements:
-- Python 3.9–3.12; NumPy >= 1.22 and < 3.0 (1.x and 2.x supported)
+ Python 3.10–3.12; NumPy >= 1.22 and < 3.0 (1.x and 2.x supported)
 - Embeddings: shape (N, D), dtype float32 recommended; near unit-norm preferred
 
 Compatibility:
 - OS: Windows, macOS, Linux
-- Python: 3.9–3.12
+ - Python: 3.10–3.12
 - NumPy: 1.22–2.x (tested in CI)
 - CPU only; no GPU required
 
