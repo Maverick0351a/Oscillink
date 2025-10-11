@@ -25,7 +25,7 @@ try:
 	__version__ = _pkg_version("oscillink")
 except Exception:
 	# Fallback default (will be overridden by pyproject probe below when available)
-	__version__ = "0.1.8"
+	__version__ = "0.1.9"
 
 # In development/editable mode, a local pyproject.toml may be present; prefer its version
 try:

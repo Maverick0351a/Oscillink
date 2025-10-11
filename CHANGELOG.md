@@ -1,3 +1,10 @@
+# [0.1.9] - 2025-10-10
+### Fixed
+- README license badge switched to PyPI-backed shield for reliable rendering.
+
+### Maintenance
+- Internal docs/readme polishing; no functional code changes.
+
 # [0.1.5] - 2025-10-08
 # [0.1.6] - 2025-10-10
 ### Changed
