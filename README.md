@@ -575,6 +575,50 @@ oscillink signup --tier beta --wait
 oscillink portal
 ```
 
+### Redis-backed CLI sessions (operators)
+
+For higher reliability and horizontal scaling of the CLI pairing flow, enable Redis-backed sessions. When enabled, short-lived CLI pairing records are stored in Redis with key `cli:{code}` and an expiry equal to `OSCILLINK_CLI_TTL` (default 900 seconds). If Redis is unavailable at runtime, the server automatically falls back to in-memory behavior.
+
+Environment variables:
+
+- `OSCILLINK_CLI_SESSIONS_BACKEND=redis` — select Redis backend (default is `memory`)
+- `OSCILLINK_STATE_BACKEND=redis` — enable Redis in the app (shared for other features like rate limits)
+- `OSCILLINK_REDIS_URL=redis://localhost:6379/0` — Redis connection URL (or use `REDIS_URL`)
+- `OSCILLINK_CLI_TTL=900` — TTL in seconds for CLI sessions
+
+Minimal docker-compose for local dev:
+
+```yaml
+version: '3.8'
+services:
+	redis:
+		image: redis:7-alpine
+		ports:
+			- '6379:6379'
+	api:
+		build:
+			context: .
+			dockerfile: cloud/Dockerfile
+		environment:
+			PORT: 8080
+			OSCILLINK_FORCE_HTTPS: '0'
+			OSCILLINK_STATE_BACKEND: redis
+			OSCILLINK_CLI_SESSIONS_BACKEND: redis
+			OSCILLINK_REDIS_URL: redis://redis:6379/0
+			STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+			STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+			OSCILLINK_STRIPE_PRICE_MAP: ${OSCILLINK_STRIPE_PRICE_MAP:-}
+		ports:
+			- '8000:8080'
+		depends_on:
+			- redis
+```
+
+Notes:
+
+- In Redis mode, CLI session expiry is handled by Redis key TTL. The server’s `purge_expired` becomes a no-op when Redis is available. If Redis is misconfigured or temporarily unavailable, the server will fall back to in-memory and purge claimed/expired sessions in-process.
+- You can keep the per-endpoint rate limits for `/billing/cli/start` and `/billing/cli/poll/{code}` by setting `OSCILLINK_EPRL_CLI_START_LIMIT`/`OSCILLINK_EPRL_CLI_START_WINDOW` and `OSCILLINK_EPRL_CLI_POLL_LIMIT`/`OSCILLINK_EPRL_CLI_POLL_WINDOW`.
+
 ### 2) Call the API
 
 Headers:

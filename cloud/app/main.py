@@ -1,20 +1,14 @@
 from __future__ import annotations
 
 # Standard library
-import hashlib
-import hmac
-import json
 import os
-import smtplib
 import time
 import uuid
-from collections import OrderedDict
-from email.message import EmailMessage
 from typing import Any
 
 # Third-party
 import numpy as np
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, ORJSONResponse
 from prometheus_client import (
@@ -30,22 +24,46 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from oscillink import OscillinkLattice, __version__
 
+# Local application imports
+from .admin import router as admin_router
 from .autocorrect import router as autocorrect_router
 from .benchmarks import router as benchmarks_router
 from .billing import (
-    TIER_CATALOG,
     current_period,
     get_price_map,
-    resolve_tier_from_subscription,
     tier_info,
 )
+from .billing_webhook import router as billing_webhook_router
 from .config import get_settings
 from .features import resolve_features
+from .jobs import router as jobs_router
 from .keystore import InMemoryKeyStore, KeyMetadata, get_keystore  # type: ignore
 from .learners import propose_overrides, record_observation
-from .models import AdminKeyResponse, AdminKeyUpdate, HealthResponse, ReceiptResponse, SettleRequest
-from .redis_backend import get_with_ttl, incr_with_window, redis_enabled, set_with_ttl
+from .models import HealthResponse, ReceiptResponse, SettleRequest
+from .redis_backend import incr_with_window, redis_enabled
 from .runtime_config import get_api_keys, get_quota_config, get_rate_limit
+from .services import cli as cli_service
+from .services.billing import (
+    fs_get_customer_mapping as _fs_get_customer_mapping,
+)
+from .services.billing import (
+    fs_set_customer_mapping as _fs_set_customer_mapping,
+)
+from .services.billing import (
+    provision_key_for_subscription as _provision_key_for_subscription,
+)
+from .services.billing import (
+    stripe_fetch_session_and_subscription as _stripe_fetch_session_and_subscription,
+)
+from .services.cache import (
+    bundle_cache_get as _bundle_cache_get,
+)
+from .services.cache import (
+    bundle_cache_put as _bundle_cache_put,
+)
+from .services.events import webhook_get_persistent, webhook_store_persistent
+from .services.usage_log import append_usage as _append_usage
+from .services.webhook_mem import get_webhook_events_mem
 
 app = FastAPI(title="Oscillink Cloud API", default_response_class=ORJSONResponse)
 
@@ -75,6 +93,9 @@ if _FORCE_HTTPS:
 # Optional routers
 app.include_router(autocorrect_router)
 app.include_router(benchmarks_router)
+app.include_router(billing_webhook_router)
+app.include_router(jobs_router)
+app.include_router(admin_router)
 
 MAX_BODY_BYTES = int(os.getenv("OSCILLINK_MAX_BODY_BYTES", "1048576"))  # 1MB default
 
@@ -109,6 +130,9 @@ USAGE_NODES: Any
 USAGE_NODE_DIM_UNITS: Any
 JOB_QUEUE_DEPTH: Any
 STRIPE_WEBHOOK_EVENTS: Any
+CLI_SESSIONS_CREATED: Any
+CLI_SESSIONS_PROVISIONED: Any
+CLI_SESSIONS_ACTIVE: Any
 
 if "oscillink_settle_requests_total" in REGISTRY._names_to_collectors:  # type: ignore[attr-defined]
     SETTLE_COUNTER = REGISTRY._names_to_collectors["oscillink_settle_requests_total"]  # type: ignore
@@ -125,6 +149,28 @@ if "oscillink_settle_requests_total" in REGISTRY._names_to_collectors:  # type: 
     else:
         STRIPE_WEBHOOK_EVENTS = Counter(
             "oscillink_stripe_webhook_events_total", "Stripe webhook events", ["result"]
+        )
+    # CLI metrics in reload-safe manner
+    if "oscillink_cli_sessions_created_total" in REGISTRY._names_to_collectors:  # type: ignore[attr-defined]
+        CLI_SESSIONS_CREATED = REGISTRY._names_to_collectors["oscillink_cli_sessions_created_total"]  # type: ignore
+    else:
+        CLI_SESSIONS_CREATED = Counter(
+            "oscillink_cli_sessions_created_total", "CLI pairing sessions created"
+        )
+    if "oscillink_cli_sessions_provisioned_total" in REGISTRY._names_to_collectors:  # type: ignore[attr-defined]
+        CLI_SESSIONS_PROVISIONED = REGISTRY._names_to_collectors[
+            "oscillink_cli_sessions_provisioned_total"
+        ]  # type: ignore
+    else:
+        CLI_SESSIONS_PROVISIONED = Counter(
+            "oscillink_cli_sessions_provisioned_total", "CLI pairing sessions provisioned"
+        )
+    if "oscillink_cli_sessions_active" in REGISTRY._names_to_collectors:  # type: ignore[attr-defined]
+        CLI_SESSIONS_ACTIVE = REGISTRY._names_to_collectors["oscillink_cli_sessions_active"]  # type: ignore
+    else:
+        CLI_SESSIONS_ACTIVE = Gauge(
+            "oscillink_cli_sessions_active",
+            "Active CLI sessions (memory mode only, best-effort)",
         )
 else:
     SETTLE_COUNTER = Counter("oscillink_settle_requests_total", "Total settle requests", ["status"])
@@ -144,6 +190,15 @@ else:
     )
     STRIPE_WEBHOOK_EVENTS = Counter(
         "oscillink_stripe_webhook_events_total", "Stripe webhook events", ["result"]
+    )
+    CLI_SESSIONS_CREATED = Counter(
+        "oscillink_cli_sessions_created_total", "CLI pairing sessions created"
+    )
+    CLI_SESSIONS_PROVISIONED = Counter(
+        "oscillink_cli_sessions_provisioned_total", "CLI pairing sessions provisioned"
+    )
+    CLI_SESSIONS_ACTIVE = Gauge(
+        "oscillink_cli_sessions_active", "Active CLI sessions (memory mode only, best-effort)"
     )
 
 _key_usage: dict[str, dict[str, float]] = {}
@@ -384,6 +439,91 @@ def _client_ip(request: Request, trust_xff: bool) -> str:
     return "unknown"
 
 
+def _endpoint_rate_limit(request: Request, limit_env: str, window_env: str) -> dict | None:
+    """Apply per-endpoint rate limits using the existing Redis/in-memory primitives.
+
+    Returns headers to set on success, or raises HTTPException 429 when exceeded.
+    Disabled when limit<=0.
+    """
+    try:
+        limit = int(os.getenv(limit_env, "0"))
+    except ValueError:
+        limit = 0
+    try:
+        window = int(os.getenv(window_env, "60"))
+    except ValueError:
+        window = 60
+    if limit <= 0:
+        return None
+    trust_xff = os.getenv("OSCILLINK_TRUST_XFF", "0") in {"1", "true", "TRUE", "on"}
+    ip = _client_ip(request, trust_xff)
+    now = time.time()
+    if redis_enabled():
+        key = f"eprl:{request.url.path}:{ip}:{window}"
+        count, ttl = incr_with_window(key, window, amount=1)
+        if count > limit and ttl != -2:
+            reset_at = int(now + (ttl if ttl >= 0 else window))
+            headers = {
+                "Retry-After": str(int(max(reset_at - now, 0)) + 1),
+                "X-EPRL-Limit": str(limit),
+                "X-EPRL-Remaining": "0",
+                "X-EPRL-Reset": str(reset_at),
+            }
+            raise HTTPException(
+                status_code=429, detail="endpoint rate limit exceeded", headers=headers
+            )
+        remaining = max(limit - int(count), 0)
+        reset_at = int(now + (ttl if ttl >= 0 else window))
+        return {
+            "X-EPRL-Limit": str(limit),
+            "X-EPRL-Remaining": str(remaining),
+            "X-EPRL-Reset": str(reset_at),
+        }
+    # In-memory fallback (basic per-endpoint/IP)
+    key = f"{request.url.path}:{ip}"
+    rec = _ip_rl_counters.get(key)
+    if not rec or now - rec["window_start"] >= window:
+        rec = {"window_start": now, "count": 0.0}
+        _ip_rl_counters[key] = rec  # type: ignore
+    if rec["count"] >= limit:
+        reset_at = rec["window_start"] + window
+        headers = {
+            "Retry-After": str(int(reset_at - now) + 1),
+            "X-EPRL-Limit": str(limit),
+            "X-EPRL-Remaining": "0",
+            "X-EPRL-Reset": str(int(reset_at)),
+        }
+        raise HTTPException(status_code=429, detail="endpoint rate limit exceeded", headers=headers)
+    rec["count"] += 1
+    remaining = max(limit - int(rec["count"]), 0)
+    return {
+        "X-EPRL-Limit": str(limit),
+        "X-EPRL-Remaining": str(remaining),
+        "X-EPRL-Reset": str(int(rec["window_start"] + window)),
+    }
+
+
+def _apply_eprl_headers(
+    request: Request | None, response: Response | None, limit_env: str, window_env: str
+) -> None:
+    """Apply endpoint rate limit and set response headers when enabled.
+
+    Raises HTTPException(429) when limit exceeded. Silently ignores unexpected errors.
+    """
+    if request is None:
+        return
+    try:
+        hdrs = _endpoint_rate_limit(request, limit_env, window_env)
+        if hdrs and response is not None:
+            for k, v in hdrs.items():
+                response.headers.setdefault(k, v)
+    except HTTPException:
+        raise
+    except Exception:
+        # Best-effort only
+        pass
+
+
 @app.middleware("http")
 async def per_ip_rate_limit_mw(request: Request, call_next):
     limit, window, trust_xff = _ip_rate_limit_config()
@@ -518,168 +658,18 @@ _ENV_KEYS_FINGERPRINT = {
     "tiers": os.getenv("OSCILLINK_KEY_TIERS", ""),
 }
 
-# ---------------- Bundle Cache (per-key, TTL LRU) -----------------
-_bundle_cache: dict[str, "OrderedDict[str, dict]"] = {}
+# ---------------- Bundle Cache now provided by services.cache -----------------
 
 
-def _cache_enabled() -> bool:
-    return os.getenv("OSCILLINK_CACHE_ENABLE", "0").lower() in {"1", "true", "on", "yes"}
-
-
-def _cache_ttl() -> int:
-    try:
-        return max(1, int(os.getenv("OSCILLINK_CACHE_TTL", "300")))
-    except Exception:
-        return 300
-
-
-def _cache_cap() -> int:
-    try:
-        return max(1, int(os.getenv("OSCILLINK_CACHE_CAP", "128")))
-    except Exception:
-        return 128
-
-
-def _bundle_cache_get(api_key: str | None, sig: str):
-    if not (_cache_enabled() and api_key and sig):
-        return None
-    od = _bundle_cache.get(api_key)
-    if not isinstance(od, OrderedDict):
-        return None
-    rec = od.get(sig)
-    if not rec:
-        return None
-    # TTL check
-    try:
-        created = float(rec.get("created", 0.0))
-    except Exception:
-        created = 0.0
-    if time.time() - created > _cache_ttl():
-        try:
-            od.pop(sig, None)
-        except Exception:
-            pass
-        return None
-    # refresh LRU
-    try:
-        od.move_to_end(sig)
-    except Exception:
-        pass
-    # bump access count
-    try:
-        rec["hits"] = int(rec.get("hits", 0)) + 1
-    except Exception:
-        pass
-    return rec
-
-
-def _bundle_cache_put(api_key: str | None, sig: str, bundle: list[dict]):
-    if not (_cache_enabled() and api_key and sig and isinstance(bundle, list)):
-        return
-    od = _bundle_cache.get(api_key)
-    if not isinstance(od, OrderedDict):
-        od = OrderedDict()
-        _bundle_cache[api_key] = od
-    od[sig] = {"bundle": bundle, "created": time.time(), "hits": 0}
-    od.move_to_end(sig)
-    # enforce cap
-    cap = _cache_cap()
-    while len(od) > cap:
-        try:
-            od.popitem(last=False)
-        except Exception:
-            break
-
-
-# In-memory async job store (non-persistent, single-process)
-_jobs: dict[str, dict] = {}
-_JOB_TTL_SEC = 3600
+## Jobs moved to cloud.app.jobs router
 
 # Usage logging (optional JSONL)
-USAGE_LOG_PATH = os.getenv("OSCILLINK_USAGE_LOG")  # if set, append JSON lines
-USAGE_LOG_SIGNING_SECRET = os.getenv("OSCILLINK_USAGE_SIGNING_SECRET")  # optional HMAC secret
-
-
-def _append_usage(record: dict):
-    if not USAGE_LOG_PATH:
-        return
-    try:
-        if USAGE_LOG_SIGNING_SECRET:
-            # compute signature over deterministic canonical form of payload fields (exclude signature itself)
-            payload = json.dumps(record, separators=(",", ":"), sort_keys=True)
-            sig = hmac.new(
-                USAGE_LOG_SIGNING_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
-            ).hexdigest()
-            record = {**record, "sig": {"alg": "HS256", "h": sig}}
-        # minimal defensiveness: ensure directory exists (if path includes directory component)
-        dir_part = os.path.dirname(USAGE_LOG_PATH)
-        if dir_part:
-            os.makedirs(dir_part, exist_ok=True)
-        with open(USAGE_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, separators=(",", ":")) + "\n")
-    except Exception:
-        # Silent failure; logging framework could be integrated later
-        pass
+USAGE_LOG_PATH = os.getenv("OSCILLINK_USAGE_LOG")  # retained for backward compat in env
 
 
 # ---------------- Webhook Event Logging / Idempotency -----------------
 # Shared in-memory webhook events store (stable across TestClient instances)
-
-_STRIPE_EVENTS_COUNT = 0
-
-
-class _WebhookEventsWrapper:
-    """Wrapper around app.state.webhook_events that also tracks a stable count.
-
-    Tests use len(_webhook_events_mem) and .clear(). This wrapper ensures len reflects
-    the number of unique events recorded in this process regardless of any internal
-    rebindings of the underlying dict.
-    """
-
-    def __init__(self, app_ref: FastAPI):
-        self._app = app_ref
-
-    def _store(self) -> dict:
-        if not hasattr(self._app.state, "webhook_events") or not isinstance(
-            self._app.state.webhook_events, dict
-        ):  # type: ignore[attr-defined]
-            self._app.state.webhook_events = {}
-        return self._app.state.webhook_events  # type: ignore[attr-defined]
-
-    def __setitem__(self, key, value):
-        global _STRIPE_EVENTS_COUNT
-        st = self._store()
-        is_new = key not in st
-        st[key] = value
-        if is_new:
-            _STRIPE_EVENTS_COUNT += 1
-
-    def __getitem__(self, key):
-        return self._store()[key]
-
-    def __contains__(self, key):
-        return key in self._store()
-
-    def get(self, key, default=None):
-        return self._store().get(key, default)
-
-    def values(self):
-        return self._store().values()
-
-    def items(self):
-        return self._store().items()
-
-    def clear(self):
-        global _STRIPE_EVENTS_COUNT
-        st = self._store()
-        st.clear()
-        _STRIPE_EVENTS_COUNT = 0
-
-    def __len__(self):
-        return _STRIPE_EVENTS_COUNT
-
-
-_webhook_events_mem = _WebhookEventsWrapper(app)
+_webhook_events_mem = get_webhook_events_mem(app)
 
 
 def _webhook_events_collection():
@@ -690,68 +680,18 @@ def _webhook_get(event_id: str):
     # Memory first
     if event_id in _webhook_events_mem:
         return _webhook_events_mem[event_id]
-    # Redis (optional distributed idempotency)
-    if redis_enabled():
-        val, _ttl = get_with_ttl(f"stripe_evt:{event_id}")
-        if val:
-            try:
-                return json.loads(val)
-            except Exception:
-                return {"id": event_id, "source": "redis"}
-    coll = _webhook_events_collection()
-    if not coll:
-        return None
-    try:  # pragma: no cover - external dependency path
-        from google.cloud import firestore  # type: ignore
-
-        client = firestore.Client()
-        snap = client.collection(coll).document(event_id).get()
-        if snap.exists:
-            return snap.to_dict()
-    except Exception:
-        return None
-    return None
+    # Persistent stores (Redis/Firestore) best-effort
+    return webhook_get_persistent(event_id)
 
 
 def _webhook_store(event_id: str, record: dict):
     # Always store in memory for fast duplicate checks
     _webhook_events_mem[event_id] = record
-    # Redis store with TTL for distributed idempotency
-    if redis_enabled():
-        try:
-            ttl = int(os.getenv("OSCILLINK_WEBHOOK_TTL", "604800"))  # 7 days default
-        except ValueError:
-            ttl = 604800
-        try:
-            set_with_ttl(f"stripe_evt:{event_id}", json.dumps(record, separators=(",", ":")), ttl)
-        except Exception:
-            pass
-    coll = _webhook_events_collection()
-    if not coll:
-        return
-    try:  # pragma: no cover - external dependency path
-        from google.cloud import firestore  # type: ignore
-
-        client = firestore.Client()
-        # Use create to preserve idempotency (do not overwrite existing)
-        doc_ref = client.collection(coll).document(event_id)
-        if not doc_ref.get().exists:
-            doc_ref.set(record, merge=False)
-    except Exception:
-        # Swallow errors silently (observability layer can catch later)
-        pass
+    # Persist best-effort (Redis/Firestore) without failing request
+    webhook_store_persistent(event_id, record)
 
 
-def _purge_old_jobs():
-    now = time.time()
-    expired = [jid for jid, rec in _jobs.items() if now - rec.get("created", now) > _JOB_TTL_SEC]
-    for jid in expired:
-        _jobs.pop(jid, None)
-    if "JOB_QUEUE_DEPTH" in globals():
-        try:
-            JOB_QUEUE_DEPTH.set(len(_jobs))  # type: ignore
-        except Exception:
-            pass
+## _purge_old_jobs moved to cloud.app.jobs
 
 
 def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
@@ -1449,189 +1389,18 @@ def _new_api_key() -> str:
         return "ok_" + uuid.uuid4().hex
 
 
-# --- CLI signup sessions (device-code style) ---
-# In-memory store mapping a short code to pending/provisioned status. Optional persistence can be added later.
-_CLI_SESSIONS: dict[str, dict[str, Any]] = {}
-try:
-    _CLI_TTL_SEC = int(os.getenv("OSCILLINK_CLI_TTL", "900"))  # 15 minutes default
-except ValueError:
-    _CLI_TTL_SEC = 900
+## CLI signup sessions moved to services.cli
 
 
-def _new_cli_code() -> str:
-    # short, unguessable code for CLI pairing
-    try:
-        import secrets
-
-        return secrets.token_hex(4)  # 8 hex chars
-    except Exception:
-        return uuid.uuid4().hex[:8]
-
-
-def _purge_cli_sessions():
-    now = time.time()
-    expired = [
-        c
-        for c, rec in _CLI_SESSIONS.items()
-        if now - rec.get("created", now) > _CLI_TTL_SEC or rec.get("status") == "claimed"
-    ]
-    for c in expired:
-        _CLI_SESSIONS.pop(c, None)
-
-
-# --- Optional Firestore mapping: api_key -> (stripe_customer_id, subscription_id) ---
-_CUSTOMERS_COLLECTION = os.getenv("OSCILLINK_CUSTOMERS_COLLECTION", "").strip()
-
-
-def _fs_get_customer_mapping(api_key: str):  # pragma: no cover - external dependency
-    if not _CUSTOMERS_COLLECTION:
-        return None
-    try:
-        from google.cloud import firestore  # type: ignore
-
-        client = firestore.Client()
-        snap = client.collection(_CUSTOMERS_COLLECTION).document(api_key).get()
-        if snap.exists:
-            return snap.to_dict() or None
-    except Exception:
-        return None
-    return None
-
-
-def _fs_set_customer_mapping(
-    api_key: str, customer_id: str | None, subscription_id: str | None
-):  # pragma: no cover - external dependency
-    if not _CUSTOMERS_COLLECTION or not api_key or not (customer_id or subscription_id):
-        return
-    try:
-        from google.cloud import firestore  # type: ignore
-
-        client = firestore.Client()
-        doc_ref = client.collection(_CUSTOMERS_COLLECTION).document(api_key)
-        payload = {
-            "api_key": api_key,
-            "stripe_customer_id": customer_id,
-            "subscription_id": subscription_id,
-            "updated_at": time.time(),
-        }
-        if not doc_ref.get().exists:
-            payload["created_at"] = time.time()
-        doc_ref.set(payload, merge=True)
-    except Exception:
-        # best-effort only
-        pass
-
-
-def _stripe_fetch_session_and_subscription(
-    session_id: str,
-):  # pragma: no cover - external dependency path
-    stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
-    if not stripe_secret:
-        raise RuntimeError("stripe secret not configured")
-    import stripe  # type: ignore
-
-    stripe.api_key = stripe_secret
-    stripe.api_version = "2024-06-20"
-    session = stripe.checkout.Session.retrieve(session_id, expand=["subscription", "customer"])  # type: ignore
-    if not session:
-        raise ValueError("session not found")
-    sub = (
-        session.get("subscription")
-        if isinstance(session, dict)
-        else getattr(session, "subscription", None)
-    )
-    if isinstance(sub, str):
-        sub = stripe.Subscription.retrieve(sub)  # type: ignore
-    if not isinstance(sub, dict):
-        sub_id = session.get("subscription") if isinstance(session, dict) else None
-        if sub_id:
-            sub = stripe.Subscription.retrieve(sub_id)  # type: ignore
-    if not isinstance(sub, dict):
-        raise ValueError("subscription not found for session")
-    return session, sub
-
-
-def _send_key_email(to_email: str, api_key: str, tier: str, status: str) -> bool:
-    """Best-effort email sender for delivering API keys.
-
-    Controlled by environment:
-      - OSCILLINK_EMAIL_MODE: 'none' (default), 'console', or 'smtp'
-      - OSCILLINK_EMAIL_FROM: sender address for smtp mode
-      - SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_TLS (1/0)
-
-    Returns True if an email was attempted/sent; False otherwise.
-    """
-    mode = (os.getenv("OSCILLINK_EMAIL_MODE", "none") or "none").lower()
-    if not to_email or mode == "none":
-        return False
-    subject = "Your Oscillink API Key"
-    body = (
-        f"Thanks for subscribing.\n\n"
-        f"Tier: {tier} (status: {status})\n"
-        f"API Key: {api_key}\n\n"
-        f"Keep this key secret. You can rotate or revoke it via support.\n"
-    )
-    if mode == "console":
-        # Log to server console only (useful for dev)
-        print(f"[email:console] to={to_email} subject={subject}\n{body}")
-        return True
-    if mode == "smtp":
-        from_addr = os.getenv("OSCILLINK_EMAIL_FROM", "")
-        host = os.getenv("SMTP_HOST", "")
-        port = int(os.getenv("SMTP_PORT", "587") or "587")
-        user = os.getenv("SMTP_USER", "")
-        pw = os.getenv("SMTP_PASS", "")
-        use_tls = os.getenv("SMTP_TLS", "1") in {"1", "true", "TRUE", "on"}
-        if not (from_addr and host and to_email):
-            return False
-        try:
-            msg = EmailMessage()
-            msg["From"] = from_addr
-            msg["To"] = to_email
-            msg["Subject"] = subject
-            msg.set_content(body)
-            with smtplib.SMTP(host, port, timeout=10) as s:
-                if use_tls:
-                    s.starttls()
-                if user:
-                    s.login(user, pw)
-                s.send_message(msg)
-            return True
-        except Exception:
-            # Do not fail webhook processing on email errors
-            return False
-    return False
-
-
-def _provision_key_for_subscription(sub: dict) -> tuple[str, str, str]:  # (api_key, tier, status)
-    meta = sub.get("metadata", {}) or {}
-    api_key = meta.get("api_key") if isinstance(meta, dict) else None
-    new_tier = resolve_tier_from_subscription(sub)
-    tinfo = tier_info(new_tier)
-    status = "pending" if getattr(tinfo, "requires_manual_activation", False) else "active"
-    if not api_key:
-        api_key = _new_api_key()
-        # Best-effort attach to subscription metadata
-        try:
-            import stripe  # type: ignore
-
-            stripe.Subscription.modify(sub.get("id"), metadata={**meta, "api_key": api_key})  # type: ignore
-        except Exception:
-            pass
-    ks = get_keystore()
-    ks.update(
-        api_key,
-        create=True,
-        tier=new_tier,
-        status=status,
-        features={"diffusion_gates": tinfo.diffusion_allowed},
-    )
-    return api_key, new_tier, status
+## Billing helpers moved to cloud.app.services.billing
 
 
 @app.post("/billing/cli/start")
 def billing_cli_start(
-    tier: str = "beta", email: str | None = None
+    request: Request,
+    response: Response,
+    tier: str = "beta",
+    email: str | None = None,
 ):  # pragma: no cover - external dependency path
     """Start a CLI signup session and return a Checkout URL plus a short code.
 
@@ -1646,7 +1415,11 @@ def billing_cli_start(
     stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
     if not stripe_secret:
         raise HTTPException(status_code=503, detail="billing not configured")
-    code = _new_cli_code()
+    # Per-endpoint rate limit (feature-flag via env)
+    _apply_eprl_headers(
+        request, response, "OSCILLINK_EPRL_CLI_START_LIMIT", "OSCILLINK_EPRL_CLI_START_WINDOW"
+    )
+    code = cli_service.new_code()
     try:
         import stripe  # type: ignore
 
@@ -1665,18 +1438,27 @@ def billing_cli_start(
         if email:
             _kwargs["customer_email"] = email
         sess = stripe.checkout.Session.create(**_kwargs)  # type: ignore
-        _purge_cli_sessions()
-        _CLI_SESSIONS[code] = {
-            "status": "pending",
-            "created": time.time(),
-            "session_id": getattr(sess, "id", None) or sess.get("id"),
-            "tier": tier,
-            "email": email,
-        }
+        cli_service.purge_expired()
+        cli_service.set_session(
+            code,
+            {
+                "status": "pending",
+                "created": time.time(),
+                "session_id": getattr(sess, "id", None) or sess.get("id"),
+                "tier": tier,
+                "email": email,
+            },
+        )
+        try:
+            CLI_SESSIONS_CREATED.inc()
+            # Best-effort: track active sessions in memory mode
+            CLI_SESSIONS_ACTIVE.inc()
+        except Exception:
+            pass
         return {
             "code": code,
             "checkout_url": getattr(sess, "url", None) or sess.get("url"),
-            "expires_in": _CLI_TTL_SEC,
+            "expires_in": cli_service.ttl_seconds(),
         }
     except ModuleNotFoundError as exc:
         raise HTTPException(status_code=501, detail="stripe library not installed") from exc
@@ -1685,15 +1467,24 @@ def billing_cli_start(
 
 
 @app.get("/billing/cli/poll/{code}")
-def billing_cli_poll(code: str):
+def billing_cli_poll(code: str, request: Request, response: Response):
     """Poll the status of a CLI signup session and return the API key when ready."""
-    _purge_cli_sessions()
-    rec = _CLI_SESSIONS.get(code)
+    # Per-endpoint rate limit (feature-flag via env)
+    _apply_eprl_headers(
+        request, response, "OSCILLINK_EPRL_CLI_POLL_LIMIT", "OSCILLINK_EPRL_CLI_POLL_WINDOW"
+    )
+    cli_service.purge_expired()
+    rec = cli_service.get_session(code)
     if not rec:
         return {"status": "expired"}
     if rec.get("status") == "provisioned":
         # Mark as claimed to allow eventual purge
-        rec["status"] = "claimed"
+        cli_service.update_session(code, {"status": "claimed"})
+        try:
+            CLI_SESSIONS_PROVISIONED.inc()
+            CLI_SESSIONS_ACTIVE.dec()
+        except Exception:
+            pass
         return {"status": "ready", "api_key": rec.get("api_key"), "tier": rec.get("tier")}
     return {"status": "pending"}
 
@@ -1821,593 +1612,10 @@ def create_billing_portal(ctx=Depends(feature_context)):
         raise HTTPException(status_code=400, detail=f"failed to create portal session: {e}") from e
 
 
-@app.post(f"/{_API_VERSION}/jobs/settle")
-def submit_job(
-    req: SettleRequest, background: BackgroundTasks, request: Request, ctx=Depends(feature_context)
-):
-    x_api_key = ctx["api_key"]
-    feats = ctx["features"]
-    if req.gates is not None:
-        if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
-            raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
-        if not feats.diffusion_allowed:
-            raise HTTPException(
-                status_code=403, detail="diffusion gating not enabled for this tier"
-            )
-    job_id = uuid.uuid4().hex
-    created = time.time()
-    _purge_old_jobs()
-    _jobs[job_id] = {"status": "queued", "created": created}
-    try:
-        JOB_QUEUE_DEPTH.set(len(_jobs))  # type: ignore
-    except Exception:
-        pass
-
-    def run_job():
-        try:
-            lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
-            # Quota check occurs at execution time to avoid holding quota for queued jobs
-            try:
-                units = N * D
-                monthly_ctx = _check_monthly_cap(x_api_key, units)
-                remaining, limit, reset_at = _check_and_consume_quota(x_api_key, units)
-            except HTTPException as he:  # record quota error inside job result
-                _jobs[job_id] = {
-                    "status": "error",
-                    "error": he.detail,
-                    "created": created,
-                    "quota_error": True,
-                }
-                return
-            t0 = time.time()
-            settle_stats = lat.settle(
-                dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol
-            )
-            elapsed = time.time() - t0
-            rec = lat.receipt() if req.options.include_receipt else None
-            bundle = lat.bundle(k=req.options.bundle_k) if req.options.bundle_k else None
-            USAGE_NODES.inc(N)
-            USAGE_NODE_DIM_UNITS.inc(N * D)
-            _jobs[job_id] = {
-                "status": "done",
-                "created": created,
-                "completed": time.time(),
-                "result": {
-                    "state_sig": rec.get("meta", {}).get("state_sig") if rec else lat._signature(),
-                    "receipt": rec,
-                    "bundle": bundle,
-                    "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-                    "meta": {
-                        "N": N,
-                        "D": D,
-                        "kneighbors_requested": req.params.kneighbors,
-                        "kneighbors_effective": k_eff,
-                        "profile_id": profile_id,
-                        "request_id": request.headers.get(REQUEST_ID_HEADER, ""),
-                        "usage": {
-                            "nodes": N,
-                            "node_dim_units": units,
-                            "monthly": None
-                            if not monthly_ctx
-                            else {
-                                "limit": monthly_ctx["limit"],
-                                "used": monthly_ctx["used"],
-                                "remaining": monthly_ctx["remaining"],
-                                "period": monthly_ctx["period"],
-                            },
-                        },
-                        "quota": None
-                        if limit == 0
-                        else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-                    },
-                },
-            }
-            # Learning hook (best-effort)
-            try:
-                record_observation(
-                    x_api_key,
-                    profile_id,
-                    {
-                        "lamG": eff_params["lamG"],
-                        "lamC": eff_params["lamC"],
-                        "lamQ": eff_params["lamQ"],
-                        "kneighbors": k_eff,
-                    },
-                    {
-                        "duration_ms": 1000.0 * elapsed,
-                        "iters": int(settle_stats.get("iters", 0)),
-                        "residual": float(settle_stats.get("res", 0.0)),
-                        "tol": float(req.options.tol),
-                    },
-                )
-            except Exception:
-                pass
-            _append_usage(
-                {
-                    "ts": time.time(),
-                    "event": "job_settle",
-                    "api_key": x_api_key,
-                    "job_id": job_id,
-                    "N": N,
-                    "D": D,
-                    "units": units,
-                    "duration_ms": 1000.0 * elapsed,
-                    "quota": None
-                    if limit == 0
-                    else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-                    "monthly": None
-                    if not monthly_ctx
-                    else {
-                        "limit": monthly_ctx["limit"],
-                        "used": monthly_ctx["used"],
-                        "remaining": monthly_ctx["remaining"],
-                        "period": monthly_ctx["period"],
-                    },
-                }
-            )
-        except Exception as e:
-            _jobs[job_id] = {"status": "error", "error": str(e), "created": created}
-        try:
-            JOB_QUEUE_DEPTH.set(len(_jobs))  # type: ignore
-        except Exception:
-            pass
-
-    background.add_task(run_job)
-    return {"job_id": job_id, "status": "queued"}
+## Job submission and management endpoints moved to cloud.app.jobs router
 
 
-@app.get(f"/{_API_VERSION}/jobs/{{job_id}}")
-def get_job(job_id: str, ctx=Depends(feature_context)):
-    job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="job not found")
-    return job
-
-
-@app.delete(f"/{_API_VERSION}/jobs/{{job_id}}")
-def cancel_job(job_id: str, ctx=Depends(feature_context)):
-    job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="job not found")
-    if job.get("status") in {"done", "error"}:
-        return {"job_id": job_id, "status": job["status"], "note": "already finished"}
-    # Cannot truly cancel background task easily; mark as cancelled
-    job["status"] = "cancelled"
-    try:
-        JOB_QUEUE_DEPTH.set(len(_jobs))  # type: ignore
-    except Exception:
-        pass
-    return {"job_id": job_id, "status": "cancelled"}
-
-
-# ---------------- Admin Key Management -----------------
-
-
-def _admin_guard(x_admin_secret: str | None = Header(default=None)):
-    required = os.getenv("OSCILLINK_ADMIN_SECRET")
-    if not required:
-        raise HTTPException(status_code=503, detail="admin secret not configured")
-    if x_admin_secret != required:
-        raise HTTPException(status_code=401, detail="invalid admin secret")
-    return True
-
-
-@app.get("/admin/keys/{api_key}", response_model=AdminKeyResponse)
-def admin_get_key(api_key: str, auth=Depends(_admin_guard)):
-    ks = get_keystore()
-    meta = ks.get(api_key)
-    if not meta:
-        raise HTTPException(status_code=404, detail="key not found")
-    return AdminKeyResponse(
-        api_key=meta.api_key,
-        tier=meta.tier,
-        status=meta.status,
-        quota_limit_units=meta.quota_limit_units,
-        quota_window_seconds=meta.quota_window_seconds,
-        features=meta.features,
-        created_at=meta.created_at,
-        updated_at=meta.updated_at,
-    )
-
-
-@app.put("/admin/keys/{api_key}", response_model=AdminKeyResponse)
-def admin_put_key(api_key: str, payload: AdminKeyUpdate, auth=Depends(_admin_guard)):
-    ks = get_keystore()
-    # Pydantic v2 prefers model_dump; maintain compatibility with v1
-    fields = (
-        payload.model_dump(exclude_unset=True)
-        if hasattr(payload, "model_dump")
-        else payload.dict(exclude_unset=True)
-    )
-    # Support creation if absent
-    meta = ks.update(api_key, create=True, **fields)
-    if not meta:
-        raise HTTPException(status_code=500, detail="failed to update key")
-    return AdminKeyResponse(
-        api_key=meta.api_key,
-        tier=meta.tier,
-        status=meta.status,
-        quota_limit_units=meta.quota_limit_units,
-        quota_window_seconds=meta.quota_window_seconds,
-        features=meta.features,
-        created_at=meta.created_at,
-        updated_at=meta.updated_at,
-    )
-
-
-@app.get("/admin/webhook/events")
-def admin_list_webhook_events(limit: int = 50, auth=Depends(_admin_guard)):
-    """Return recent webhook events (memory-backed; Firestore persistence optional).
-
-    Parameters:
-        limit: max number of events to return (most recent first). Clamped to 500.
-    """
-    lim = max(1, min(limit, 500))
-    # In-memory events dict keyed by id; sort by ts descending.
-    events = list(_webhook_events_mem.values())
-    events.sort(key=lambda r: r.get("ts", 0), reverse=True)
-    return {"events": events[:lim], "count": len(events), "returned": len(events[:lim])}
-
-
-@app.get("/admin/billing/price-map")
-def admin_get_price_map(auth=Depends(_admin_guard)):
-    """Return the active Stripe price->tier map and tier catalog.
-
-    Useful for quickly verifying which Stripe price IDs map to internal tiers and the
-    associated allowances for each tier.
-    """
-    pmap = get_price_map()
-    tiers = {
-        name: {
-            "name": info.name,
-            "monthly_unit_cap": info.monthly_unit_cap,
-            "diffusion_allowed": info.diffusion_allowed,
-            "requires_manual_activation": info.requires_manual_activation,
-        }
-        for name, info in TIER_CATALOG.items()
-    }
-    return {"price_map": pmap, "tiers": tiers}
-
-
-@app.get("/admin/usage/{api_key}")
-def admin_get_usage(api_key: str, auth=Depends(_admin_guard)):
-    """Return current in-memory quota window state and monthly usage for an API key.
-
-    Notes:
-    - Quota window is best-effort per-process; if multiple processes run, each has its own counters.
-    - Monthly usage may optionally be hydrated/persisted via Firestore when configured.
-    """
-    # Current rolling quota window state (may be absent if key hasn't made requests this window)
-    q = _key_usage.get(api_key)
-    quota = None
-    if q:
-        quota = {
-            "window_start": q.get("window_start"),
-            "used": int(q.get("used", 0)),
-            "limit": int(q.get("limit", 0)),
-            "window": int(q.get("window", 60)),
-            "reset": int(q.get("window_start", 0) + q.get("window", 60)),
-            "remaining": max(int(q.get("limit", 0)) - int(q.get("used", 0)), 0),
-        }
-    # Monthly usage (period, used units, remaining if cap applies)
-    mu = _monthly_usage.get(api_key)
-    monthly = None
-    if mu:
-        meta: KeyMetadata | None = get_keystore().get(api_key)
-        cap = tier_info(meta.tier).monthly_unit_cap if meta else None
-        remaining = None if cap is None else max(int(cap) - int(mu.get("used", 0)), 0)
-        monthly = {
-            "period": mu.get("period"),
-            "used": int(mu.get("used", 0)),
-            "limit": cap,
-            "remaining": remaining,
-        }
-    return {"api_key": api_key, "quota": quota, "monthly": monthly}
-
-
-@app.post("/admin/billing/cancel/{api_key}")
-def admin_cancel_subscription(
-    api_key: str, immediate: bool | None = None, auth=Depends(_admin_guard)
-):
-    """Cancel a customer's subscription for the given API key (admin only).
-
-    If immediate is True, the subscription is cancelled immediately; otherwise it will cancel at period end.
-    Requires customer mapping in Firestore and STRIPE_SECRET_KEY.
-    """
-    mapping = _fs_get_customer_mapping(api_key)
-    if not mapping or not mapping.get("subscription_id"):
-        raise HTTPException(status_code=404, detail="subscription mapping not found")
-    try:
-        stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
-        if not stripe_secret:
-            raise HTTPException(status_code=503, detail="billing not configured")
-        import stripe  # type: ignore
-
-        stripe.api_key = stripe_secret
-        stripe.api_version = "2024-06-20"
-        sub_id = mapping["subscription_id"]
-        do_immediate = (
-            bool(immediate)
-            if immediate is not None
-            else (
-                os.getenv("OSCILLINK_STRIPE_CANCEL_IMMEDIATE", "0") in {"1", "true", "TRUE", "on"}
-            )
-        )
-        if do_immediate:
-            stripe.Subscription.delete(sub_id)  # type: ignore
-            status = "cancelled"
-        else:
-            stripe.Subscription.modify(sub_id, cancel_at_period_end=True)  # type: ignore
-            status = "cancel_at_period_end"
-        # Suspend key access immediately
-        ks = get_keystore()
-        ks.update(api_key, status="suspended")
-        return {"api_key": api_key, "subscription_id": sub_id, "status": status}
-    except HTTPException:
-        raise
-    except ModuleNotFoundError as exc:
-        raise HTTPException(status_code=501, detail="stripe library not installed") from exc
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"failed to cancel subscription: {e}") from e
-
-
-# Stripe webhook with subscription → tier sync
-@app.post("/stripe/webhook")
-async def stripe_webhook(request: Request):  # noqa: C901
-    """Stripe webhook endpoint (skeleton).
-
-    Validates signature if STRIPE_WEBHOOK_SECRET set; presently stores raw event in memory (non-durable).
-    Future: write to Firestore and process asynchronously.
-    """
-    secret = os.getenv("STRIPE_WEBHOOK_SECRET")
-    body = await request.body()
-    payload_text = body.decode("utf-8", errors="replace")
-    event = None
-    allow_unverified = os.getenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "0") in {
-        "1",
-        "true",
-        "TRUE",
-        "on",
-    }
-    if allow_unverified:
-        try:
-            # Best-effort server-side warning to avoid production misconfiguration
-            print(
-                "[warn] OSCILLINK_ALLOW_UNVERIFIED_STRIPE is enabled — webhook signature verification may be bypassed. Do NOT enable in production."
-            )
-        except Exception:
-            pass
-    verified = False
-    if secret:
-        sig_header = request.headers.get("stripe-signature")
-        if not sig_header:
-            # When explicitly allowed, accept unverified events (test/dev only)
-            if allow_unverified:
-                try:
-                    event = json.loads(payload_text)
-                except Exception as err:
-                    raise HTTPException(status_code=400, detail="invalid JSON payload") from err
-            else:
-                raise HTTPException(status_code=400, detail="missing stripe-signature header")
-        # Enforce timestamp freshness (basic replay protection) if header contains t= segment
-        try:
-            max_age = int(os.getenv("OSCILLINK_STRIPE_MAX_AGE", "300"))  # seconds
-        except ValueError:
-            max_age = 300
-        if max_age > 0 and sig_header:
-            # stripe-signature format: t=timestamp,v1=...,v0=...
-            try:
-                parts = {
-                    kv.split("=")[0]: kv.split("=")[1] for kv in sig_header.split(",") if "=" in kv
-                }
-                if "t" in parts:
-                    ts = int(parts["t"])
-                    now = int(time.time())
-                    if now - ts > max_age:
-                        # Allow explicit unverified override pathway to bypass freshness (test/dev only)
-                        if allow_unverified:
-                            pass
-                        else:
-                            raise HTTPException(status_code=400, detail="webhook timestamp too old")
-            except HTTPException:
-                raise
-            except Exception:
-                # Non-fatal: if parsing fails we proceed (could tighten later)
-                pass
-        # If explicitly allowed, skip cryptographic verification and parse JSON
-        if allow_unverified:
-            try:
-                event = json.loads(payload_text)
-                verified = False
-            except Exception as err:
-                raise HTTPException(status_code=400, detail="invalid JSON payload") from err
-        else:
-            # Attempt real verification if stripe package available
-            try:  # pragma: no cover - external dependency path
-                import stripe  # type: ignore
-
-                stripe.api_version = "2024-06-20"
-                event = stripe.Webhook.construct_event(payload_text, sig_header, secret)
-                verified = True
-            except ModuleNotFoundError:
-                # Fallback: parse JSON without cryptographic validation (NOT FOR PROD)
-                try:
-                    event = json.loads(payload_text)
-                except Exception as err:
-                    raise HTTPException(
-                        status_code=400, detail="invalid JSON payload (no stripe lib)"
-                    ) from err
-            except Exception as e:  # signature failure
-                # If verification fails but override is allowed, proceed unverified
-                if os.getenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "0") in {
-                    "1",
-                    "true",
-                    "TRUE",
-                    "on",
-                }:
-                    try:
-                        event = json.loads(payload_text)
-                        verified = False
-                    except Exception as err:
-                        raise HTTPException(status_code=400, detail="invalid JSON payload") from err
-                else:
-                    raise HTTPException(
-                        status_code=400, detail=f"signature verification failed: {e}"
-                    ) from e
-    else:
-        try:
-            event = json.loads(payload_text)
-        except Exception as err:
-            raise HTTPException(status_code=400, detail="invalid JSON payload") from err
-
-    etype = (
-        event.get("type", "unknown")
-        if isinstance(event, dict)
-        else getattr(event, "type", "unknown")
-    )
-    event_id = event.get("id") if isinstance(event, dict) else getattr(event, "id", None)
-    if not event_id:
-        # Without an id we cannot ensure idempotency
-        raise HTTPException(status_code=400, detail="event missing id")
-
-    # Idempotency check
-    existing = _webhook_get(event_id)
-    if existing:
-        try:
-            STRIPE_WEBHOOK_EVENTS.labels(result="duplicate").inc()  # type: ignore
-        except Exception:
-            pass
-        return {
-            "received": True,
-            "id": event_id,
-            "type": etype,
-            "processed": False,
-            "duplicate": True,
-            "note": "duplicate ignored",
-        }
-
-    processed = False
-    note = None
-    # Subscription lifecycle handling
-    if etype.startswith("customer.subscription."):
-        sub_obj = event.get("data", {}).get("object", {}) if isinstance(event, dict) else {}
-        # Subscription cancellation / deletion sets status; treat deleted as cancelled
-        api_key = None
-        try:
-            metadata = sub_obj.get("metadata", {}) or {}
-            api_key = metadata.get("api_key")
-        except Exception:
-            api_key = None
-        if api_key:
-            ks = get_keystore()
-            # Only mutate keystore if event verified OR explicitly allowed via override (development/testing)
-            if not verified and secret and not allow_unverified:
-                note = "signature not verified; subscription event ignored"
-            else:
-                if etype in {"customer.subscription.created", "customer.subscription.updated"}:
-                    new_tier = resolve_tier_from_subscription(sub_obj)
-                    tinfo = tier_info(new_tier)
-                    status = (
-                        "pending"
-                        if getattr(tinfo, "requires_manual_activation", False)
-                        else "active"
-                    )
-                    ks.update(
-                        api_key,
-                        create=True,
-                        tier=new_tier,
-                        status=status,
-                        features={"diffusion_gates": tinfo.diffusion_allowed},
-                    )
-                    processed = True
-                    note = f"tier set to {new_tier} (status={status})"
-                elif etype in {"customer.subscription.deleted", "customer.subscription.cancelled"}:
-                    ks.update(api_key, status="suspended")
-                    processed = True
-                    note = "subscription cancelled; key suspended"
-        else:
-            note = "subscription missing api_key metadata"
-    # Checkout success handling (optional auto-provisioning via webhook)
-    elif etype == "checkout.session.completed":
-        sess_obj = event.get("data", {}).get("object", {}) if isinstance(event, dict) else {}
-        email = None
-        try:
-            email = (sess_obj.get("customer_details", {}) or {}).get("email") or sess_obj.get(
-                "customer_email"
-            )
-        except Exception:
-            email = None
-        stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
-        if not stripe_secret:
-            note = "stripe secret not set; cannot provision on webhook"
-        elif secret and not verified and not allow_unverified:
-            note = "signature not verified; checkout session ignored"
-        else:
-            try:  # pragma: no cover - external dependency path
-                import stripe  # type: ignore
-
-                stripe.api_key = stripe_secret
-                stripe.api_version = "2024-06-20"
-                sid = sess_obj.get("id") or None
-                if not sid:
-                    raise ValueError("missing session id")
-                session, sub = _stripe_fetch_session_and_subscription(sid)
-                api_key, new_tier, status = _provision_key_for_subscription(sub)
-                try:
-                    cust_id = session.get("customer") if isinstance(session, dict) else None
-                    sub_id = sub.get("id") if isinstance(sub, dict) else None
-                    _fs_set_customer_mapping(api_key, cust_id, sub_id)
-                except Exception:
-                    pass
-                # If this checkout was initiated via CLI, fulfill the CLI session
-                try:
-                    cli_code = (
-                        session.get("client_reference_id") if isinstance(session, dict) else None
-                    ) or (
-                        (session.get("metadata") or {}).get("cli_code")
-                        if isinstance(session, dict)
-                        else None
-                    )
-                except Exception:
-                    cli_code = None
-                if cli_code and cli_code in _CLI_SESSIONS:
-                    _CLI_SESSIONS[cli_code].update(
-                        {
-                            "status": "provisioned",
-                            "api_key": api_key,
-                            "tier": new_tier,
-                            "updated": time.time(),
-                        }
-                    )
-                if email:
-                    _send_key_email(email, api_key, new_tier, status)
-                processed = True
-                note = f"key provisioned for session; tier={new_tier}"
-            except ModuleNotFoundError:
-                note = "stripe library not installed; cannot provision"
-            except Exception as e:
-                note = f"provisioning failed: {e}"
-    record = {
-        "id": event_id,
-        "ts": time.time(),
-        "type": etype,
-        "processed": processed,
-        "note": note,
-        "live": bool(secret),
-        "verified": verified,
-        "allow_unverified_override": allow_unverified,
-        "api_key": api_key if "api_key" in locals() else None,
-        # integrity hash of raw payload (without storing full body) for audit correlation
-        "payload_sha256": hashlib.sha256(payload_text.encode("utf-8")).hexdigest(),
-        "freshness_max_age": os.getenv("OSCILLINK_STRIPE_MAX_AGE", "300"),
-    }
-    # Attempt to persist event (fire-and-forget)
-    _webhook_store(event_id, record)
-    try:
-        STRIPE_WEBHOOK_EVENTS.labels(result="processed" if processed else "ignored").inc()  # type: ignore
-    except Exception:
-        pass
-    return record
+# Admin endpoints moved to cloud.app.admin router
 
 
 # CLI entrypoint for uvicorn

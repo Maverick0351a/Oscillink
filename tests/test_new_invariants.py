@@ -64,7 +64,9 @@ def test_webhook_unverified_override_allows_processing(monkeypatch):
     }
     monkeypatch.setenv("OSCILLINK_STRIPE_PRICE_MAP", "price_free:free")
     r = client.post(
-        "/stripe/webhook", data=json.dumps(event), headers={"stripe-signature": "t=1,v1=test"}
+        "/stripe/webhook",
+        content=json.dumps(event),
+        headers={"stripe-signature": "t=1,v1=test", "content-type": "application/json"},
     )
     assert r.status_code == 200
     body = r.json()

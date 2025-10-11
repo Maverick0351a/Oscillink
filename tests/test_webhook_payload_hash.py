@@ -22,12 +22,20 @@ EVENT = {
 
 def test_webhook_payload_hash_present(monkeypatch):
     monkeypatch.setenv("OSCILLINK_STRIPE_PRICE_MAP", "price_free:free")
-    r = client.post("/stripe/webhook", data=json.dumps(EVENT))
+    r = client.post(
+        "/stripe/webhook",
+        content=json.dumps(EVENT),
+        headers={"content-type": "application/json"},
+    )
     assert r.status_code == 200
     body = r.json()
     assert "payload_sha256" in body and len(body["payload_sha256"]) == 64
     # Duplicate call returns duplicate record (short-circuit) - should still have id but *not* recompute new hash path changes
-    r2 = client.post("/stripe/webhook", data=json.dumps(EVENT))
+    r2 = client.post(
+        "/stripe/webhook",
+        content=json.dumps(EVENT),
+        headers={"content-type": "application/json"},
+    )
     assert r2.status_code == 200
     body2 = r2.json()
     assert body2.get("duplicate") is True

@@ -32,4 +32,11 @@ When using the cloud API server, responses may include these headers when enable
 - Adaptive profiles: `X-Profile-Id` (also present as `meta.profile_id`), gated by `OSCILLINK_ADAPTIVE_PROFILES` and `OSCILLINK_ADAPTIVE_LEARN`.
 - Bundle caching (/bundle): `X-Cache: HIT|MISS`; on HIT also `X-Cache-Hits` and `X-Cache-Age`. Gated by `OSCILLINK_CACHE_ENABLE`, with `OSCILLINK_CACHE_TTL` and `OSCILLINK_CACHE_CAP`.
 
+- Endpoint rate limits (per-endpoint, best-effort): when enabled per endpoint, responses include `X-EPRL-Limit`, `X-EPRL-Remaining`, and `X-EPRL-Reset` while 429 responses include `Retry-After`.
+	- CLI endpoints:
+		- `/billing/cli/start`: gated by `OSCILLINK_EPRL_CLI_START_LIMIT` and `OSCILLINK_EPRL_CLI_START_WINDOW` (seconds)
+		- `/billing/cli/poll/{code}`: gated by `OSCILLINK_EPRL_CLI_POLL_LIMIT` and `OSCILLINK_EPRL_CLI_POLL_WINDOW` (seconds)
+	- Per-IP global limiter headers: `X-IPLimit-*` when `OSCILLINK_IP_RATE_LIMIT>0` and window via `OSCILLINK_IP_RATE_WINDOW`.
+	- Global rate limiter headers: `X-RateLimit-*` when enabled via runtime config (`get_rate_limit`).
+
 See README section "Cloud feature flags and headers (beta)" for details.
