@@ -29,6 +29,8 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
   "Typing :: Typed"
 ]
 
@@ -38,6 +40,9 @@ Documentation = "https://github.com/Maverick0351a/Oscillink#quickstart"
 Source = "https://github.com/Maverick0351a/Oscillink"
 Issues = "https://github.com/Maverick0351a/Oscillink/issues"
 Changelog = "https://github.com/Maverick0351a/Oscillink/blob/main/CHANGELOG.md"
+Security = "https://github.com/Maverick0351a/Oscillink/blob/main/SECURITY.md"
+Support = "mailto:contact@oscillink.com"
+Funding = "https://buy.stripe.com/7sY9AUbcK1if2y6d2g2VG08"
 
 [project.scripts]
 oscillink = "oscillink.cli:main"
