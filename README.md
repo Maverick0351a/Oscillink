@@ -70,7 +70,7 @@ With fixed D=64, k=6, tol=1e-3 and Jacobi preconditioning, CG converges in ~3–
 	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
 </p>
 
-<p align="center"><i>Current: v0.1.9 • API v1 • Cloud: beta</i></p>
+<p align="center"><i>Current: v0.1.11 • API v1 • Cloud: beta</i></p>
 
 ---
 
@@ -714,6 +714,7 @@ _— Independent review_
 ## Support & branding
 
 - Contact: travisjohnson@oscillink.com
+- General support: contact@oscillink.com · Security: security@oscillink.com
 - Branding: Oscillink is a brand of Odin Protocol Inc. (trademark filing for Oscillink planned).
 
 ## Troubleshooting (Cloud)
