@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Any, Dict
 
 
-def compare_perf(baseline: Dict[str, Any], current: Dict[str, Any], metrics=None, tolerance_pct: float = 20.0):
+def compare_perf(
+    baseline: Dict[str, Any], current: Dict[str, Any], metrics=None, tolerance_pct: float = 20.0
+):
     """Compare aggregate means in benchmark JSON objects.
 
     Returns dict with deviations and failures list.

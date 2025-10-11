@@ -8,6 +8,7 @@ Exit codes:
  1 = Baseline missing / load error
  2 = Breaking change detected
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,6 +31,7 @@ def flatten_keys(obj, prefix=""):
             keys |= flatten_keys(item, prefix + "[]")
     return keys
 
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", required=True)
@@ -49,9 +51,10 @@ def main():
         for k in missing[:50]:
             print(" -", k)
         if len(missing) > 50:
-            print(f" ... (+{len(missing)-50} more)")
+            print(f" ... (+{len(missing) - 50} more)")
         sys.exit(2)
     print("OpenAPI diff check passed (no removals)")
+
 
 if __name__ == "__main__":
     main()

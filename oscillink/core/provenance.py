@@ -20,6 +20,7 @@ def compare_provenance(a: OscillinkLattice, b: OscillinkLattice) -> Dict[str, An
 
     Hashing approach keeps payload small while giving high collision resistance for debugging.
     """
+
     def hash_array(arr: np.ndarray, round_decimals: int = 6) -> str:
         r = np.round(arr.astype(float), round_decimals)
         h = hashlib.sha256(r.tobytes()).hexdigest()
@@ -37,7 +38,8 @@ def compare_provenance(a: OscillinkLattice, b: OscillinkLattice) -> Dict[str, An
         "params_equal": pa == pb,
         "shape_equal": (a.N, a.D) == (b.N, b.D),
         "adj_equal": adj_fingerprint(a) == adj_fingerprint(b),
-        "chain_equal": (a._chain_nodes is not None) == (b._chain_nodes is not None) and (len(a._chain_nodes or []) == len(b._chain_nodes or [])),
+        "chain_equal": (a._chain_nodes is not None) == (b._chain_nodes is not None)
+        and (len(a._chain_nodes or []) == len(b._chain_nodes or [])),
         "psi_equal": hash_array(a.psi) == hash_array(b.psi),
         "gates_equal": hash_array(a.B_diag) == hash_array(b.B_diag),
     }
@@ -45,9 +47,12 @@ def compare_provenance(a: OscillinkLattice, b: OscillinkLattice) -> Dict[str, An
 
     if not out["same"]:
         out["detail"] = {
-            "params_a": pa, "params_b": pb,
-            "shape_a": (a.N, a.D), "shape_b": (b.N, b.D),
+            "params_a": pa,
+            "params_b": pb,
+            "shape_a": (a.N, a.D),
+            "shape_b": (b.N, b.D),
         }
     return out
+
 
 __all__ = ["compare_provenance"]

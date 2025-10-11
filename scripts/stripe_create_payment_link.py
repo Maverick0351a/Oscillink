@@ -14,6 +14,7 @@ Notes:
     session and display the API key immediately.
 - You can create multiple links for different tiers by running with different --tier values.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,7 +53,9 @@ def _find_price_for_tier(tier: str) -> str:
             product_id = p.id
             break
     if not product_id:
-        raise RuntimeError(f"No product found for tier '{tier}'. Run scripts/stripe_setup.py --create first.")
+        raise RuntimeError(
+            f"No product found for tier '{tier}'. Run scripts/stripe_setup.py --create first."
+        )
     # Find a price with matching metadata.tier
     prices = stripe.Price.list(product=product_id, active=True, limit=100)
     for pr in prices.auto_paging_iter():  # type: ignore
@@ -82,9 +85,18 @@ def create_payment_link(tier: str, base_url: str) -> Dict[str, str]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tier", choices=["free", "beta", "pro", "enterprise"], default="beta")
-    ap.add_argument("--base-url", type=str, default=os.getenv("OSCILLINK_PUBLIC_BASE_URL"), help="Public base URL of your API (e.g., https://api.example.com)")
+    ap.add_argument(
+        "--base-url",
+        type=str,
+        default=os.getenv("OSCILLINK_PUBLIC_BASE_URL"),
+        help="Public base URL of your API (e.g., https://api.example.com)",
+    )
     ap.add_argument("--api-key", type=str, default=None, help="Stripe secret key (overrides env)")
-    ap.add_argument("--allow-pro", action="store_true", help="Allow creating links for the Pro tier (hidden by default during beta)")
+    ap.add_argument(
+        "--allow-pro",
+        action="store_true",
+        help="Allow creating links for the Pro tier (hidden by default during beta)",
+    )
     args = ap.parse_args()
 
     api_key = args.api_key or os.getenv("STRIPE_API_KEY") or os.getenv("STRIPE_SECRET_KEY")
@@ -97,7 +109,9 @@ def main():
     stripe.api_key = api_key
 
     if args.tier == "pro" and not args.allow_pro:
-        raise SystemExit("Pro tier is hidden during early beta. Re-run with --allow-pro if you intend to generate a Pro link.")
+        raise SystemExit(
+            "Pro tier is hidden during early beta. Re-run with --allow-pro if you intend to generate a Pro link."
+        )
 
     res = create_payment_link(args.tier, args.base_url)
     print("Created payment link:")

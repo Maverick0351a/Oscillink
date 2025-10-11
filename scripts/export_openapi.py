@@ -8,6 +8,7 @@ If --out is omitted, writes ./openapi.json (overwrites).
 
 Intended for CI / release automation to publish a stable schema artifact.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,13 +26,14 @@ app = mainmod.app
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--out', type=Path, default=Path('openapi.json'), help='Output path')
+    p.add_argument("--out", type=Path, default=Path("openapi.json"), help="Output path")
     args = p.parse_args()
     schema = app.openapi()
     # Remove unused servers list or other transient keys if desired (keep full fidelity for now)
-    with args.out.open('w', encoding='utf-8') as f:
+    with args.out.open("w", encoding="utf-8") as f:
         json.dump(schema, f, indent=2, sort_keys=True)
     print(f"Wrote OpenAPI schema to {args.out}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

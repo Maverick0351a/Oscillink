@@ -10,7 +10,7 @@ def test_export_import_roundtrip_deltaH_close():
 
     lat = OscillinkLattice(Y, kneighbors=4)
     lat.set_query(psi)
-    lat.add_chain([1,3,5], lamP=0.2)
+    lat.add_chain([1, 3, 5], lamP=0.2)
     lat.settle(max_iters=6)
     r1 = lat.receipt()
 
@@ -19,7 +19,9 @@ def test_export_import_roundtrip_deltaH_close():
     lat2.settle(max_iters=6)
     r2 = lat2.receipt()
 
-    assert abs(r1["deltaH_total"] - r2["deltaH_total"]) < 1e-2  # loose tolerance (randomness differences)
+    assert (
+        abs(r1["deltaH_total"] - r2["deltaH_total"]) < 1e-2
+    )  # loose tolerance (randomness differences)
 
 
 def test_cached_ustar_reuse():
@@ -45,6 +47,7 @@ def test_cached_ustar_reuse():
 
 def test_parameter_validation_errors():
     import pytest
+
     Y = np.random.randn(10, 8).astype(np.float32)
     with pytest.raises(ValueError):
         OscillinkLattice(Y, kneighbors=0)

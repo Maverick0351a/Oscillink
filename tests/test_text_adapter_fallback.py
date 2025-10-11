@@ -24,6 +24,8 @@ def test_fallback_shapes_and_determinism_and_norms(monkeypatch):
     assert np.allclose(e1, e2)  # deterministic hash-based fallback
     norms = np.linalg.norm(e1, axis=1)
     assert np.allclose(norms, 1.0, atol=1e-5)
+
+
 def test_fallback_without_normalize_has_nonzero_norms(monkeypatch):
     monkeypatch.setattr(text_mod, "_load_st_model", lambda *a, **k: None, raising=False)
     texts = ["a", "b", "c"]

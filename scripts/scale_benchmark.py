@@ -8,6 +8,7 @@ Each line: {"N":..., "D":..., "k":..., "trial": t, "graph_build_ms":..., "ustar_
 
 Intended for quick local scaling curves and CI spot checks (keep sizes modest there).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,7 +28,7 @@ def run_case(N: int, D: int, k: int, trials: int, seed: int):
     # Use light receipt detail to avoid O(N^2) diagnostics (null points, per-node components)
     # which can cause large memory usage at higher N during scaling benchmarks.
     lat.set_receipt_detail("light")
-    lat.set_query(psi/ (np.linalg.norm(psi)+1e-12))
+    lat.set_query(psi / (np.linalg.norm(psi) + 1e-12))
     lat.add_chain(list(range(min(4, N)))) if N >= 4 else None
     # warm settle
     lat.settle(max_iters=6, tol=1e-3)
@@ -36,7 +37,10 @@ def run_case(N: int, D: int, k: int, trials: int, seed: int):
         lat.refresh_Ustar(tol=1e-4, max_iters=64)
         rec = lat.receipt()
         out = {
-            "N": N, "D": D, "k": k, "trial": t,
+            "N": N,
+            "D": D,
+            "k": k,
+            "trial": t,
             "graph_build_ms": rec["meta"].get("graph_build_ms"),
             "ustar_solve_ms": rec["meta"].get("ustar_solve_ms"),
             "last_settle_ms": rec["meta"].get("last_settle_ms"),
@@ -61,6 +65,7 @@ def main():
         for D in args.D:
             for k in args.k:
                 run_case(N, D, k, args.trials, seed=args.seed)
+
 
 if __name__ == "__main__":  # pragma: no cover
     main()

@@ -18,9 +18,9 @@ def test_minimal_signature_mode():
     lat.set_receipt_secret(secret)
     # default mode minimal
     r = lat.receipt()
-    sig_block = r['meta']['signature']
-    assert sig_block['payload']['mode'] == 'minimal'
-    assert 'params' not in sig_block['payload']
+    sig_block = r["meta"]["signature"]
+    assert sig_block["payload"]["mode"] == "minimal"
+    assert "params" not in sig_block["payload"]
     assert verify_receipt(r, secret)
 
 
@@ -28,12 +28,12 @@ def test_extended_signature_mode():
     secret = b"test-secret"
     lat = make_lat()
     lat.set_receipt_secret(secret)
-    lat.set_signature_mode('extended')
+    lat.set_signature_mode("extended")
     r = lat.receipt()
-    sig_block = r['meta']['signature']
-    payload = sig_block['payload']
-    assert payload['mode'] == 'extended'
-    for k in ['params', 'graph', 'ustar_iters', 'ustar_res', 'ustar_converged']:
+    sig_block = r["meta"]["signature"]
+    payload = sig_block["payload"]
+    assert payload["mode"] == "extended"
+    for k in ["params", "graph", "ustar_iters", "ustar_res", "ustar_converged"]:
         assert k in payload
     assert verify_receipt(r, secret)
 
@@ -58,4 +58,4 @@ def test_neighbor_seed_repro():
     # At least allow the possibility they differ; not strictly required but if equal that's fine
     # So we don't assert inequality; instead ensure both are valid hex and length 64
     for s in (lat4._signature(), lat5._signature()):
-        assert isinstance(s, str) and len(s) == 64 and all(c in '0123456789abcdef' for c in s)
+        assert isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)

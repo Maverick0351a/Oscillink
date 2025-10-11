@@ -1,0 +1,8 @@
+steps:
+  - name: gcr.io/kaniko-project/executor:latest
+    args:
+      - --destination=us-docker.pkg.dev/$PROJECT_ID/oscillink/oscillink-cloud:$_IMAGE_TAG
+      - --dockerfile=cloud/Dockerfile
+      - --context=.
+      - --cache=true
+timeout: '1200s'

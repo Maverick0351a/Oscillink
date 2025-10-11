@@ -16,5 +16,5 @@ def test_perf_smoke_small():
     rec = lat.receipt()
     elapsed_ms = (time.time() - t0) * 1000
     # Very generous ceiling to avoid CI flakiness.
-    assert rec['deltaH_total'] is not None
+    assert rec["deltaH_total"] is not None
     assert elapsed_ms < 1500, f"Perf smoke exceeded ceiling: {elapsed_ms:.1f} ms"

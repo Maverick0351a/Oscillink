@@ -4,8 +4,8 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Any, Dict, List, Optional, cast
 from collections import deque
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 
@@ -97,10 +97,17 @@ class OscillinkLattice:
         self._receipt_detail: str = "full"
         # last dynamics (optional): populated when OSCILLINK_RECEIPT_DYNAMICS is enabled and settle() is called
         self._last_dynamics: Optional[Dict[str, Any]] = None
-        self._log("init", {
-            "N": self.N, "D": self.D, "kneighbors_requested": kneighbors, "kneighbors_effective": k_eff,
-            "deterministic_k": self._deterministic_k, "neighbor_seed": self._neighbor_seed
-        })
+        self._log(
+            "init",
+            {
+                "N": self.N,
+                "D": self.D,
+                "kneighbors_requested": kneighbors,
+                "kneighbors_effective": k_eff,
+                "deterministic_k": self._deterministic_k,
+                "neighbor_seed": self._neighbor_seed,
+            },
+        )
 
     # --- Public API ---
 
@@ -197,13 +204,16 @@ class OscillinkLattice:
             max_iters=max_iters,
         )
         self.U = U_plus.astype(np.float32)
-        self.last = {"iters": int(iters), "res": float(res), "t_ms": 1000.0 * (time.time()-t0)}
+        self.last = {"iters": int(iters), "res": float(res), "t_ms": 1000.0 * (time.time() - t0)}
         self._log("settle", self.last)
         if res > tol * 10:  # loose heuristic: significantly above desired tolerance
-            self._log("settle_convergence_warn", {"res": float(res), "tol": tol, "iters": int(iters)})
+            self._log(
+                "settle_convergence_warn", {"res": float(res), "tol": tol, "iters": int(iters)}
+            )
         # Optional dynamics metrics (gated by env flag)
         try:
             import os as _os
+
             dyn_flag = _os.getenv("OSCILLINK_RECEIPT_DYNAMICS", "0").strip().lower()
             if dyn_flag in {"1", "true", "yes"}:
                 self._last_dynamics = self._compute_dynamics(U_prev, self.U, int(iters))
@@ -245,12 +255,12 @@ class OscillinkLattice:
             return out
 
         M_diag = (
-            self.lamG
-            + self.lamQ * self.B_diag
-            + (self.lamP if self.L_path is not None else 0.0)
+            self.lamG + self.lamQ * self.B_diag + (self.lamP if self.L_path is not None else 0.0)
         )
         t_solve0 = time.time()
-        Ustar, iters_used, res = cg_solve(M_mul, RHS, x0=self.Y, M_diag=M_diag, tol=tol, max_iters=max_iters)
+        Ustar, iters_used, res = cg_solve(
+            M_mul, RHS, x0=self.Y, M_diag=M_diag, tol=tol, max_iters=max_iters
+        )
         solve_ms = 1000.0 * (time.time() - t_solve0)
         Ustar = Ustar.astype(np.float32)
         converged = bool(res <= tol)
@@ -261,9 +271,22 @@ class OscillinkLattice:
             self._Ustar_cache = Ustar
             self._Ustar_sig = sig
         self.stats["ustar_solves"] += 1
-        self._log("ustar_solve", {"signature": sig, "tol": tol, "max_iters": max_iters, "iters": int(iters_used), "res": float(res), "converged": converged, "solve_ms": solve_ms})
+        self._log(
+            "ustar_solve",
+            {
+                "signature": sig,
+                "tol": tol,
+                "max_iters": max_iters,
+                "iters": int(iters_used),
+                "res": float(res),
+                "converged": converged,
+                "solve_ms": solve_ms,
+            },
+        )
         if not converged:
-            self._log("ustar_convergence_warn", {"res": float(res), "tol": tol, "iters": int(iters_used)})
+            self._log(
+                "ustar_convergence_warn", {"res": float(res), "tol": tol, "iters": int(iters_used)}
+            )
         return Ustar
 
     def refresh_Ustar(self, tol: float = 1e-4, max_iters: int = 64) -> np.ndarray:
@@ -274,6 +297,7 @@ class OscillinkLattice:
 
     def receipt(self) -> Dict[str, Any]:
         from .. import __version__ as pkg_version
+
         Ustar = self.solve_Ustar()
         # Always compute core energy delta; conditionally compute heavier diagnostics based on detail mode
         dH = deltaH_trace(
@@ -308,6 +332,7 @@ class OscillinkLattice:
             nulls_full = null_points(Ustar, self.A, self.sqrt_deg, self.lamC, z_th=3.0)
         # Null-point capping (observability control)
         import os as _os
+
         cap_raw = _os.getenv("OSCILLINK_RECEIPT_NULL_CAP", "0").strip()
         try:
             cap_val = int(cap_raw)
@@ -317,12 +342,22 @@ class OscillinkLattice:
             # Simple strategy: keep highest z values
             nulls_sorted = sorted(nulls_full, key=lambda e: e.get("z", 0.0), reverse=True)
             nulls = nulls_sorted[:cap_val]
-            null_meta = {"total_null_points": len(nulls_full), "returned_null_points": cap_val, "null_cap_applied": True}
+            null_meta = {
+                "total_null_points": len(nulls_full),
+                "returned_null_points": cap_val,
+                "null_cap_applied": True,
+            }
         else:
             nulls = nulls_full
-            null_meta = {"total_null_points": len(nulls_full), "returned_null_points": len(nulls_full), "null_cap_applied": False}
+            null_meta = {
+                "total_null_points": len(nulls_full),
+                "returned_null_points": len(nulls_full),
+                "null_cap_applied": False,
+            }
         meta = {
-            "ustar_cached": bool(self._Ustar_cache is not None and self._Ustar_sig == self._signature()),
+            "ustar_cached": bool(
+                self._Ustar_cache is not None and self._Ustar_sig == self._signature()
+            ),
             "ustar_solves": int(self.stats["ustar_solves"]),
             "ustar_cache_hits": int(self.stats["ustar_cache_hits"]),
             "ustar_converged": bool(getattr(self, "last_ustar", {}).get("converged", True)),
@@ -355,11 +390,28 @@ class OscillinkLattice:
                     "mode": "extended",
                     "state_sig": self._signature(),
                     "deltaH_total": float(dH),
-                    "ustar_iters": int(self.last_ustar.get("iters", 0) if hasattr(self, "last_ustar") else 0),
-                    "ustar_res": float(self.last_ustar.get("res", 0.0) if hasattr(self, "last_ustar") else 0.0),
-                    "ustar_converged": bool(self.last_ustar.get("converged", True) if hasattr(self, "last_ustar") else True),
-                    "params": {"lamG": self.lamG, "lamC": self.lamC, "lamQ": self.lamQ, "lamP": self.lamP},
-                    "graph": {"k": self._kneighbors, "deterministic_k": self._deterministic_k, "neighbor_seed": self._neighbor_seed},
+                    "ustar_iters": int(
+                        self.last_ustar.get("iters", 0) if hasattr(self, "last_ustar") else 0
+                    ),
+                    "ustar_res": float(
+                        self.last_ustar.get("res", 0.0) if hasattr(self, "last_ustar") else 0.0
+                    ),
+                    "ustar_converged": bool(
+                        self.last_ustar.get("converged", True)
+                        if hasattr(self, "last_ustar")
+                        else True
+                    ),
+                    "params": {
+                        "lamG": self.lamG,
+                        "lamC": self.lamC,
+                        "lamQ": self.lamQ,
+                        "lamP": self.lamP,
+                    },
+                    "graph": {
+                        "k": self._kneighbors,
+                        "deterministic_k": self._deterministic_k,
+                        "neighbor_seed": self._neighbor_seed,
+                    },
                 }
             else:  # minimal
                 payload = {
@@ -388,12 +440,18 @@ class OscillinkLattice:
         # Optionally include last dynamics snapshot under meta when enabled
         try:
             import os as _os
+
             dyn_flag = _os.getenv("OSCILLINK_RECEIPT_DYNAMICS", "0").strip().lower()
-            if dyn_flag in {"1", "true", "yes"} and getattr(self, "_last_dynamics", None) is not None:
+            if (
+                dyn_flag in {"1", "true", "yes"}
+                and getattr(self, "_last_dynamics", None) is not None
+            ):
                 meta["dynamics"] = self._last_dynamics
         except Exception:
             pass
-        self._log("receipt", {"deltaH_total": out["deltaH_total"], "ustar_cached": meta["ustar_cached"]})
+        self._log(
+            "receipt", {"deltaH_total": out["deltaH_total"], "ustar_cached": meta["ustar_cached"]}
+        )
         return out
 
     def verify_current_receipt(self, secret: bytes | str) -> bool:
@@ -410,7 +468,7 @@ class OscillinkLattice:
         di = self.sqrt_deg + 1e-12
         Un = Ustar / di[:, None]
         diffs = Un[:, None, :] - Un[None, :, :]
-        d2 = np.sum(diffs*diffs, axis=2)
+        d2 = np.sum(diffs * diffs, axis=2)
 
         # structural residuals
         R_s = self.lamC * self.A * d2.astype(np.float32)
@@ -431,7 +489,7 @@ class OscillinkLattice:
         worst = (-1, -1.0, (-1, -1))
         gain = 0.0
         for k in range(len(chain) - 1):
-            i, j = int(chain[k]), int(chain[k+1])
+            i, j = int(chain[k]), int(chain[k + 1])
             z_struct = float((R_s[i, j] - mu_s[i, 0]) / sig_s[i, 0])
             z_path = float((R_p[i, j] - mu_p[i, 0]) / sig_p[i, 0])
             rs, rp = float(R_s[i, j]), float(R_p[i, j])
@@ -449,14 +507,20 @@ class OscillinkLattice:
                 worst = (k, max(z_struct, z_path), (i, j))
 
             # chain coherence gain vs anchors
-            ydiff = (self.Y[i]/di[i]) - (self.Y[j]/di[j])
+            ydiff = (self.Y[i] / di[i]) - (self.Y[j] / di[j])
             udiff = Un[i] - Un[j]
-            gain += 0.5 * self.lamC * max(self.A[i, j], 0.0) * (
-                float(ydiff @ ydiff) - float(udiff @ udiff)
+            gain += (
+                0.5
+                * self.lamC
+                * max(self.A[i, j], 0.0)
+                * (float(ydiff @ ydiff) - float(udiff @ udiff))
             )
 
         # Ensure numeric typing for mypy: cast to float before comparison
-        verdict = all(max([cast(float, e["z_struct"]), cast(float, e["z_path"])]) <= float(z_th) for e in edges)
+        verdict = all(
+            max([cast(float, e["z_struct"]), cast(float, e["z_path"])]) <= float(z_th)
+            for e in edges
+        )
         return {
             "verdict": bool(verdict),
             "weakest_link": {
@@ -520,9 +584,12 @@ class OscillinkLattice:
             pass
 
     # --- Export / Import helpers ---
-    def export_state(self, include_graph: bool = True, include_chain: bool = True) -> Dict[str, Any]:
+    def export_state(
+        self, include_graph: bool = True, include_chain: bool = True
+    ) -> Dict[str, Any]:
         """Return a JSON-serializable dict capturing lattice state for reproducibility."""
         from .. import __version__ as pkg_version  # local import to avoid cycle at top-level
+
         # provenance hash: stable digest of key numerical state (Y, psi, B_diag, params, adjacency subset)
         # Use same adjacency sampling strategy as signature to avoid huge blobs; include shape + params.
         nz = np.argwhere(self.A > 0)[:2048]
@@ -550,8 +617,10 @@ class OscillinkLattice:
         if include_chain and self.L_path is not None:
             # chain reconstruction requires indices present in path adjacency; store edges
             edges = []
-            nz = np.argwhere((self.A_path if self.A_path is not None else np.zeros_like(self.A)) > 0)
-            for (i, j) in nz:
+            nz = np.argwhere(
+                (self.A_path if self.A_path is not None else np.zeros_like(self.A)) > 0
+            )
+            for i, j in nz:
                 if i < j:
                     edges.append([int(i), int(j)])
             state["chain_edges"] = edges
@@ -559,7 +628,13 @@ class OscillinkLattice:
                 state["chain_nodes"] = list(self._chain_nodes)
         return state
 
-    def save_state(self, path: str, format: str = "json", include_graph: bool = True, include_chain: bool = True) -> None:
+    def save_state(
+        self,
+        path: str,
+        format: str = "json",
+        include_graph: bool = True,
+        include_chain: bool = True,
+    ) -> None:
         """Persist lattice state to disk.
 
         format:
@@ -572,6 +647,7 @@ class OscillinkLattice:
             # json already imported at module top; avoid re-import here so we don't create a
             # function-local binding that would shadow the global and break the npz branch.
             import io  # noqa: F401 (reserved for potential streaming / future incremental writes)
+
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(state, f, sort_keys=True)
         elif fmt == "npz":
@@ -715,12 +791,15 @@ class OscillinkLattice:
         self.L_sym, self.sqrt_deg = normalized_laplacian(self.A)
         self._graph_build_ms = 1000.0 * (time.time() - t_build0)
         self._invalidate_cache()
-        self._log("rebuild_graph", {
-            "k": int(self._kneighbors),
-            "row_cap_val": float(self._row_cap_val),
-            "deterministic_k": self._deterministic_k,
-            "neighbor_seed": self._neighbor_seed,
-        })
+        self._log(
+            "rebuild_graph",
+            {
+                "k": int(self._kneighbors),
+                "row_cap_val": float(self._row_cap_val),
+                "deterministic_k": self._deterministic_k,
+                "neighbor_seed": self._neighbor_seed,
+            },
+        )
 
     def _coherence_drop(self, Ustar: np.ndarray) -> np.ndarray:
         """Compute per-node coherence drop term reused across receipt diagnostics and ranking."""
@@ -744,7 +823,9 @@ class OscillinkLattice:
         return coh
 
     # --- Dynamics metrics (optional) ---
-    def _compute_dynamics(self, U_prev: np.ndarray, U_next: np.ndarray, iters: int) -> Dict[str, Any]:
+    def _compute_dynamics(
+        self, U_prev: np.ndarray, U_next: np.ndarray, iters: int
+    ) -> Dict[str, Any]:
         """Compute a single-step dynamics snapshot.
 
         Metrics:
@@ -759,7 +840,19 @@ class OscillinkLattice:
         temperature = float(np.mean(move2))
 
         # Step energy drop (approximate) and viscosity
-        dH_step = float(deltaH_trace(U_prev, U_next, self.lamG, self.lamC, self.L_sym, self.lamQ, self.B_diag, self.lamP, self.L_path))
+        dH_step = float(
+            deltaH_trace(
+                U_prev,
+                U_next,
+                self.lamG,
+                self.lamC,
+                self.L_sym,
+                self.lamQ,
+                self.B_diag,
+                self.lamP,
+                self.L_path,
+            )
+        )
         viscosity_step = float(iters) / (abs(dH_step) + 1e-12)
 
         # Coherence flow on edges: drop in structural pairwise energy
@@ -771,7 +864,7 @@ class OscillinkLattice:
         flow_total = 0.0
         # Limit top edges kept to avoid huge payloads
         TOP_K = 16
-        for (i, j) in nz:
+        for i, j in nz:
             i_i, j_i = int(i), int(j)
             w = float(self.A[i_i, j_i])
             if w <= 0.0 or i_i == j_i:
@@ -885,8 +978,12 @@ class OscillinkLattice:
     # --- Representation ---
     def __repr__(self) -> str:  # pragma: no cover (formatting deterministic & simple)
         parts = [
-            f"N={self.N}", f"D={self.D}", f"k={self._kneighbors}",
-            f"lamG={self.lamG}", f"lamC={self.lamC}", f"lamQ={self.lamQ}",
+            f"N={self.N}",
+            f"D={self.D}",
+            f"k={self._kneighbors}",
+            f"lamG={self.lamG}",
+            f"lamC={self.lamC}",
+            f"lamQ={self.lamQ}",
         ]
         if self.lamP > 0 and self._chain_nodes is not None:
             parts.append(f"chain_len={len(self._chain_nodes)}")
@@ -904,6 +1001,7 @@ def json_line_logger(stream=None):
     """
     import json as _json
     import sys
+
     if stream is None:
         stream = sys.stderr
 
@@ -913,4 +1011,5 @@ def json_line_logger(stream=None):
             stream.write(_json.dumps(obj, separators=(",", ":")) + "\n")
         except Exception:
             pass
+
     return _log

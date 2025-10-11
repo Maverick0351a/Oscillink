@@ -26,5 +26,6 @@ def main():
     bundle = lat.bundle(k=6)
     print("bundle top-3:", bundle[:3])
 
+
 if __name__ == "__main__":
     main()

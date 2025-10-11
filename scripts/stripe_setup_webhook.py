@@ -8,6 +8,7 @@ Notes:
 - If an endpoint with the same URL already exists, this script will not recreate it and will exit with code 3.
 - In that case, retrieve the secret from Stripe Dashboard or delete/recreate the endpoint there.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,16 +31,28 @@ DEFAULT_EVENTS: List[str] = [
     "customer.subscription.deleted",
 ]
 
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", required=True, help="Webhook endpoint URL (must be publicly reachable)")
-    ap.add_argument("--api-key", default=None, help="Stripe secret key (fallback to STRIPE_API_KEY/STRIPE_SECRET_KEY env)")
-    ap.add_argument("--events", nargs="*", default=None, help="Override enabled events (space-separated)")
+    ap.add_argument(
+        "--url", required=True, help="Webhook endpoint URL (must be publicly reachable)"
+    )
+    ap.add_argument(
+        "--api-key",
+        default=None,
+        help="Stripe secret key (fallback to STRIPE_API_KEY/STRIPE_SECRET_KEY env)",
+    )
+    ap.add_argument(
+        "--events", nargs="*", default=None, help="Override enabled events (space-separated)"
+    )
     args = ap.parse_args()
 
     api_key = args.api_key or os.getenv("STRIPE_API_KEY") or os.getenv("STRIPE_SECRET_KEY")
     if not api_key:
-        print("STRIPE_API_KEY or STRIPE_SECRET_KEY is required (pass --api-key or set env)", file=sys.stderr)
+        print(
+            "STRIPE_API_KEY or STRIPE_SECRET_KEY is required (pass --api-key or set env)",
+            file=sys.stderr,
+        )
         return 2
 
     stripe.api_key = api_key
@@ -70,6 +83,7 @@ def main() -> int:
         return 4
     print(secret, end="")
     return 0
+
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())

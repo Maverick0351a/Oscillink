@@ -16,6 +16,7 @@ Notes:
 - Keeps runtime reasonable by using the internal tune/test split of benchmark_adaptive.py
 - You can adjust --tune-split per invocation; defaults align with the underlying script.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,7 +70,12 @@ def main():
         cases.append(Case(dataset="paris", semantic=False, k=args.k))
         cases.append(Case(dataset="paris", semantic=True, k=args.k))
 
-    results: Dict[str, Any] = {"trials": args.trials, "k": args.k, "tune_split": args.tune_split, "cases": []}
+    results: Dict[str, Any] = {
+        "trials": args.trials,
+        "k": args.k,
+        "tune_split": args.tune_split,
+        "cases": [],
+    }
     for c in cases:
         res = run_case(c, args.trials, args.tune_split)
         results["cases"].append({"dataset": c.dataset, "semantic": c.semantic, "result": res})
@@ -83,9 +89,24 @@ def main():
             r = entry["result"]
             name = f"{entry['dataset']}{'-sem' if entry['semantic'] else ''}"
             print(f"\n[{name}] adaptive_params={r.get('adaptive_params')}")
-            print("F1:", r.get("baseline_f1_mean"), r.get("default_f1_mean"), r.get("adaptive_f1_mean"))
-            print("Hall:", r.get("baseline_hall_rate"), r.get("default_hall_rate"), r.get("adaptive_hall_rate"))
-            print("Latency(ms):", r.get("baseline_time_ms_mean"), r.get("default_time_ms_mean"), r.get("adaptive_time_ms_mean"))
+            print(
+                "F1:",
+                r.get("baseline_f1_mean"),
+                r.get("default_f1_mean"),
+                r.get("adaptive_f1_mean"),
+            )
+            print(
+                "Hall:",
+                r.get("baseline_hall_rate"),
+                r.get("default_hall_rate"),
+                r.get("adaptive_hall_rate"),
+            )
+            print(
+                "Latency(ms):",
+                r.get("baseline_time_ms_mean"),
+                r.get("default_time_ms_mean"),
+                r.get("adaptive_time_ms_mean"),
+            )
 
 
 if __name__ == "__main__":

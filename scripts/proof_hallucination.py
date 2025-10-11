@@ -14,6 +14,7 @@ Outputs JSON summary by default when --json is passed; otherwise prints a human 
 NOTE: This is an illustrative, controlled demo (matches the README narrative). It is
 not a general benchmark; for real datasets, adapt the labeling and gating accordingly.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,7 +66,7 @@ def f1(precision: float, recall: float) -> float:
 def cosine_topk(psi: np.ndarray, Y: np.ndarray, k: int) -> List[int]:
     Yn = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-9)
     pn = psi / (np.linalg.norm(psi) + 1e-9)
-    scores = (Yn @ pn)
+    scores = Yn @ pn
     idx = np.argsort(-scores)[:k]
     return idx.tolist()
 
@@ -78,13 +79,13 @@ def bundle_topk(lat: OscillinkLattice, k: int) -> List[int]:
 def _dataset_mars() -> Tuple[List[str], Set[int], Set[int]]:
     corpus = [
         "mars has two moons phobos and deimos",  # pos
-        "the capital of france is paris",        # pos (off-topic)
-        "fake fact about moon cheese",           # trap
-        "einstein developed general relativity", # filler
+        "the capital of france is paris",  # pos (off-topic)
+        "fake fact about moon cheese",  # trap
+        "einstein developed general relativity",  # filler
         "spurious claim about ancient laser pyramids",  # trap
-        "mars atmosphere mostly CO2",            # pos
+        "mars atmosphere mostly CO2",  # pos
         "random note about oceans",
-        "spurious rumor about cheese aliens",    # trap-like text but we only count ones with keywords
+        "spurious rumor about cheese aliens",  # trap-like text but we only count ones with keywords
     ]
     gt_ids = {0, 5}
     trap_ids = {i for i, t in enumerate(corpus) if ("fake" in t) or ("spurious" in t)}
@@ -154,8 +155,14 @@ def trial_once(
         fn = len([i for i in gt_ids if i not in pred])
         prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        tshare = (len([i for i in pred if i in trap_ids]) / max(1, k))
-        return TrialMetrics(hallucination=any(i in trap_ids for i in pred), precision=prec, recall=rec, f1=f1(prec, rec), trap_share=tshare)
+        tshare = len([i for i in pred if i in trap_ids]) / max(1, k)
+        return TrialMetrics(
+            hallucination=any(i in trap_ids for i in pred),
+            precision=prec,
+            recall=rec,
+            f1=f1(prec, rec),
+            trap_share=tshare,
+        )
 
     pred_base = cosine_topk(psi, Y, k)
     if verbose:
@@ -163,7 +170,9 @@ def trial_once(
     base_metrics = eval_topk(pred_base)
 
     # Lattice with gates: heavily downweight traps
-    effective_k = min(6, max(1, N - 1)) if kneighbors is None else min(max(1, kneighbors), max(1, N - 1))
+    effective_k = (
+        min(6, max(1, N - 1)) if kneighbors is None else min(max(1, kneighbors), max(1, N - 1))
+    )
     lat = OscillinkLattice(Y, kneighbors=effective_k, lamG=lamG, lamC=lamC, lamQ=lamQ)
     gates = np.ones(N, dtype=np.float32)
     for i in range(N):
@@ -192,6 +201,7 @@ def trial_once(
             exclude_mask[i] = False
     # Optional allow list thresholding to mimic notebook filtering
     allowed = np.array([g > allow_threshold for g in gates]) & exclude_mask
+
     def lattice_topk() -> list[int]:
         if allowed.any() and allowed.sum() < N:
             idx_map = np.nonzero(allowed)[0]
@@ -202,7 +212,9 @@ def trial_once(
                 return [int(idx_map[0])]
             # Subgraph neighbor count: clamp to at least 1 and at most len(idx_map)-1
             effective_k_sub = min(effective_k, max(1, len(idx_map) - 1))
-            lat_sub = OscillinkLattice(Y_sub, kneighbors=effective_k_sub, lamG=lamG, lamC=lamC, lamQ=lamQ)
+            lat_sub = OscillinkLattice(
+                Y_sub, kneighbors=effective_k_sub, lamG=lamG, lamC=lamC, lamQ=lamQ
+            )
             lat_sub.set_query(psi, gates=gates_sub.astype(np.float32))
             lat_sub.settle()
             pred_local = bundle_topk(lat_sub, k)
@@ -308,16 +320,27 @@ def main():
     ap.add_argument("--offtopic-gate", dest="offtopic_gate", type=float, default=0.6)
     ap.add_argument("--allow-threshold", dest="allow_threshold", type=float, default=0.1)
     # Embedding mode
-    ap.add_argument("--semantic", action="store_true", help="Use text adapter embeddings instead of random")
+    ap.add_argument(
+        "--semantic", action="store_true", help="Use text adapter embeddings instead of random"
+    )
     # Diffusion gating
     ap.add_argument("--diffusion", action="store_true", help="Enable diffusion-based gate shaping")
     ap.add_argument("--diff-beta", dest="diff_beta", type=float, default=1.5)
     ap.add_argument("--diff-gamma", dest="diff_gamma", type=float, default=0.1)
     # Verbose & strict-exclude
     ap.add_argument("--verbose", action="store_true", help="Print baseline and lattice selections")
-    ap.add_argument("--strict-exclude", action="store_true", help="Remove known trap ids pre-lattice (demo mode)")
+    ap.add_argument(
+        "--strict-exclude",
+        action="store_true",
+        help="Remove known trap ids pre-lattice (demo mode)",
+    )
     # Optional softer metric
-    ap.add_argument("--trap-share", dest="trap_share", action="store_true", help="Include softer metric: average share of traps in top-k")
+    ap.add_argument(
+        "--trap-share",
+        dest="trap_share",
+        action="store_true",
+        help="Include softer metric: average share of traps in top-k",
+    )
     args = ap.parse_args()
 
     summary = run(

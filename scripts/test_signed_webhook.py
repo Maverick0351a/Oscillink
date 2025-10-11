@@ -14,6 +14,7 @@ Endpoints tested (in order):
 The script handles 307 redirects by re-POSTing to the Location target.
 Output: one line per endpoint with status, verified flag, id and type.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -82,7 +83,7 @@ def _post_once(url: str, payload: str, sig_header: str):
     conn.request(
         "POST",
         path,
-    body=payload.encode(),
+        body=payload.encode(),
         headers={
             "Content-Type": "application/json",
             "Stripe-Signature": sig_header,

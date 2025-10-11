@@ -13,6 +13,7 @@ If a price ID is not present, a default tier (free) is returned.
 
 Future extensions: feature allowances, unit caps per tier.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,6 +23,7 @@ from typing import Dict, Optional
 
 DEFAULT_TIER = "free"
 
+
 @dataclass
 class TierInfo:
     name: str
@@ -30,6 +32,7 @@ class TierInfo:
     diffusion_allowed: bool = False
     requires_manual_activation: bool = False
 
+
 # Static fallback tier catalog; real caps can be refined later
 TIER_CATALOG: Dict[str, TierInfo] = {
     "free": TierInfo(name="free", monthly_unit_cap=5_000_000, diffusion_allowed=False),
@@ -37,8 +40,14 @@ TIER_CATALOG: Dict[str, TierInfo] = {
     "beta": TierInfo(name="beta", monthly_unit_cap=25_000_000, diffusion_allowed=True),
     "pro": TierInfo(name="pro", monthly_unit_cap=50_000_000, diffusion_allowed=True),
     # Enterprise requires manual activation by an admin (pending until approved)
-    "enterprise": TierInfo(name="enterprise", monthly_unit_cap=None, diffusion_allowed=True, requires_manual_activation=True),
+    "enterprise": TierInfo(
+        name="enterprise",
+        monthly_unit_cap=None,
+        diffusion_allowed=True,
+        requires_manual_activation=True,
+    ),
 }
+
 
 def _parse_price_map(raw: str) -> Dict[str, str]:
     if not raw:
@@ -63,6 +72,7 @@ def _parse_price_map(raw: str) -> Dict[str, str]:
             mapping[pid.strip()] = tier.strip()
     return mapping
 
+
 # Cached mapping
 _price_map_cache: Dict[str, str] | None = None
 
@@ -77,6 +87,7 @@ _DEFAULT_PRICE_MAP: Dict[str, str] = {
     # Enterprise subscription price id (requires manual activation -> pending status initially)
     "price_cloud_enterprise": "enterprise",
 }
+
 
 def get_price_map(refresh: bool = False) -> Dict[str, str]:
     global _price_map_cache
@@ -118,8 +129,10 @@ def resolve_tier_from_subscription(sub: dict) -> str:
     except Exception:
         return DEFAULT_TIER
 
+
 def current_period() -> str:
     """Return current billing period identifier (YYYYMM)."""
     import datetime as _dt
+
     now = _dt.datetime.utcnow()
     return f"{now.year:04d}{now.month:02d}"

@@ -67,7 +67,12 @@ def embed_texts(
     model = _load_st_model(model_name)
     if model is not None:
         try:
-            vecs = model.encode(texts_list, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=normalize)
+            vecs = model.encode(
+                texts_list,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+                normalize_embeddings=normalize,
+            )
             if not normalize:
                 # Model may have normalized already; if not, we accept raw.
                 pass

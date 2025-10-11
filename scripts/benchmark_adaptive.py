@@ -11,6 +11,7 @@ Usage examples:
   python scripts/benchmark_adaptive.py --dataset mars --trials 20 --k 3 --json
   python scripts/benchmark_adaptive.py --dataset paris --trials 30 --k 5 --semantic --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,12 +77,14 @@ def f1_score(precision: float, recall: float) -> float:
 def cosine_topk(psi: np.ndarray, Y: np.ndarray, k: int) -> List[int]:
     Yn = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-9)
     pn = psi / (np.linalg.norm(psi) + 1e-9)
-    scores = (Yn @ pn)
+    scores = Yn @ pn
     idx = np.argsort(-scores)[:k]
     return idx.tolist()
 
 
-def eval_topk(pred: List[int], gt_ids: Set[int], trap_ids: Set[int], k: int) -> tuple[float, bool, float]:
+def eval_topk(
+    pred: List[int], gt_ids: Set[int], trap_ids: Set[int], k: int
+) -> tuple[float, bool, float]:
     tp = len([i for i in pred if i in gt_ids])
     fp = len([i for i in pred if i not in gt_ids])
     fn = len([i for i in gt_ids if i not in pred])
@@ -101,13 +104,13 @@ def bundle_topk(lat: OscillinkLattice, k: int) -> List[int]:
 def _dataset_mars() -> Tuple[List[str], Set[int], Set[int]]:
     corpus = [
         "mars has two moons phobos and deimos",  # pos
-        "the capital of france is paris",        # pos (off-topic)
-        "fake fact about moon cheese",           # trap
-        "einstein developed general relativity", # filler
+        "the capital of france is paris",  # pos (off-topic)
+        "fake fact about moon cheese",  # trap
+        "einstein developed general relativity",  # filler
         "spurious claim about ancient laser pyramids",  # trap
-        "mars atmosphere mostly CO2",            # pos
+        "mars atmosphere mostly CO2",  # pos
         "random note about oceans",
-        "spurious rumor about cheese aliens",    # trap-like text but we only count ones with keywords
+        "spurious rumor about cheese aliens",  # trap-like text but we only count ones with keywords
     ]
     gt_ids = {0, 5}
     trap_ids = {i for i, t in enumerate(corpus) if ("fake" in t) or ("spurious" in t)}
@@ -132,7 +135,9 @@ def _dataset_paris() -> Tuple[List[str], Set[int], Set[int]]:
     return corpus, gt_ids, trap_ids
 
 
-def generate_embeddings(corpus: List[str], semantic: bool, rng: np.random.Generator, d: int = 96) -> tuple[np.ndarray, np.ndarray]:
+def generate_embeddings(
+    corpus: List[str], semantic: bool, rng: np.random.Generator, d: int = 96
+) -> tuple[np.ndarray, np.ndarray]:
     if semantic:
         Y = embed_texts(corpus, normalize=True).astype(np.float32)
         psi = (Y[0] / (np.linalg.norm(Y[0]) + 1e-9)).astype(np.float32)
@@ -142,7 +147,9 @@ def generate_embeddings(corpus: List[str], semantic: bool, rng: np.random.Genera
     return Y, psi
 
 
-def eval_baseline(Y: np.ndarray, psi: np.ndarray, k: int, gt_ids: Set[int], trap_ids: Set[int]) -> TrialResult:
+def eval_baseline(
+    Y: np.ndarray, psi: np.ndarray, k: int, gt_ids: Set[int], trap_ids: Set[int]
+) -> TrialResult:
     t0 = time.time()
     pred = cosine_topk(psi, Y, k)
     t_ms = 1000.0 * (time.time() - t0)
@@ -150,11 +157,24 @@ def eval_baseline(Y: np.ndarray, psi: np.ndarray, k: int, gt_ids: Set[int], trap
     return TrialResult(f1=f1, hallucination=hall, trap_share=tshare, time_ms=t_ms)
 
 
-def eval_lattice(Y: np.ndarray, psi: np.ndarray, k: int, gt_ids: Set[int], trap_ids: Set[int], *, kneighbors: int, lamG: float, lamC: float, lamQ: float) -> TrialResult:
+def eval_lattice(
+    Y: np.ndarray,
+    psi: np.ndarray,
+    k: int,
+    gt_ids: Set[int],
+    trap_ids: Set[int],
+    *,
+    kneighbors: int,
+    lamG: float,
+    lamC: float,
+    lamQ: float,
+) -> TrialResult:
     N, _ = Y.shape
     k_eff = min(kneighbors, max(1, N - 1))
     t0 = time.time()
-    lat = OscillinkLattice(Y, kneighbors=k_eff, lamG=lamG, lamC=lamC, lamQ=lamQ, deterministic_k=True)
+    lat = OscillinkLattice(
+        Y, kneighbors=k_eff, lamG=lamG, lamC=lamC, lamQ=lamQ, deterministic_k=True
+    )
     lat.set_query(psi)
     lat.settle(max_iters=12, tol=1e-3)
     pred = bundle_topk(lat, k)
@@ -190,9 +210,21 @@ def tune_params(corpus: List[str], semantic: bool, trials: int, seed: int, k: in
                     f1s: List[float] = []
                     # Average over small sample of trials for robustness
                     for _ in range(trials):
-                        local_rng = np.random.default_rng(rng.integers(0, 2**32 - 1, dtype=np.uint64).item())
+                        local_rng = np.random.default_rng(
+                            rng.integers(0, 2**32 - 1, dtype=np.uint64).item()
+                        )
                         Y, psi = generate_embeddings(corpus, semantic, local_rng)
-                        res = eval_lattice(Y, psi, k, gt_ids, trap_ids, kneighbors=kngh, lamG=lamG, lamC=lamC, lamQ=lamQ)
+                        res = eval_lattice(
+                            Y,
+                            psi,
+                            k,
+                            gt_ids,
+                            trap_ids,
+                            kneighbors=kngh,
+                            lamG=lamG,
+                            lamC=lamC,
+                            lamQ=lamQ,
+                        )
                         f1s.append(res.f1)
                     means.append(((lamG, lamC, lamQ, kngh), float(np.mean(f1s) if f1s else 0.0)))
     means.sort(key=lambda x: x[1], reverse=True)
@@ -201,7 +233,9 @@ def tune_params(corpus: List[str], semantic: bool, trials: int, seed: int, k: in
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Benchmark baseline vs Oscillink default vs Oscillink adaptive")
+    ap = argparse.ArgumentParser(
+        description="Benchmark baseline vs Oscillink default vs Oscillink adaptive"
+    )
     ap.add_argument("--dataset", type=str, choices=["mars", "paris"], default="mars")
     ap.add_argument("--semantic", action="store_true", help="Use semantic/text embeddings")
     ap.add_argument("--trials", type=int, default=20)
@@ -209,9 +243,18 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--report-trap-share", action="store_true")
-    ap.add_argument("--tune-split", type=float, default=0.5, help="Fraction of trials for adaptive tuning (rest for test)")
+    ap.add_argument(
+        "--tune-split",
+        type=float,
+        default=0.5,
+        help="Fraction of trials for adaptive tuning (rest for test)",
+    )
     # Optional: run with fixed params (skip tuning)
-    ap.add_argument("--use-fixed-params", action="store_true", help="Use provided lamG/lamC/lamQ/kneighbors for adaptive; skip tuning")
+    ap.add_argument(
+        "--use-fixed-params",
+        action="store_true",
+        help="Use provided lamG/lamC/lamQ/kneighbors for adaptive; skip tuning",
+    )
     ap.add_argument("--lamG", type=float, default=None)
     ap.add_argument("--lamC", type=float, default=None)
     ap.add_argument("--lamQ", type=float, default=None)
@@ -239,7 +282,9 @@ def main():
         tune_trials = max(1, int(args.trials * args.tune_split))
         test_trials = max(1, args.trials - tune_trials)
         # Tune adaptive params on tune split
-        best_params = tune_params(corpus, args.semantic, trials=tune_trials, seed=args.seed, k=args.k)
+        best_params = tune_params(
+            corpus, args.semantic, trials=tune_trials, seed=args.seed, k=args.k
+        )
 
     # Fixed default params
     default_params = {"lamG": 1.0, "lamC": 0.5, "lamQ": 4.0, "kneighbors": 6}
@@ -311,11 +356,19 @@ def main():
         print("Dataset:", summary.dataset, "Semantic:", summary.semantic)
         print("k:", summary.k)
         print("Adaptive params:", summary.adaptive_params)
-        print(f"F1 (mean): baseline={summary.baseline_f1_mean:.3f} default={summary.default_f1_mean:.3f} adaptive={summary.adaptive_f1_mean:.3f}")
-        print(f"Hallucination rate: baseline={summary.baseline_hall_rate:.3f} default={summary.default_hall_rate:.3f} adaptive={summary.adaptive_hall_rate:.3f}")
-        print(f"Latency ms (mean): baseline={summary.baseline_time_ms_mean:.1f} default={summary.default_time_ms_mean:.1f} adaptive={summary.adaptive_time_ms_mean:.1f}")
+        print(
+            f"F1 (mean): baseline={summary.baseline_f1_mean:.3f} default={summary.default_f1_mean:.3f} adaptive={summary.adaptive_f1_mean:.3f}"
+        )
+        print(
+            f"Hallucination rate: baseline={summary.baseline_hall_rate:.3f} default={summary.default_hall_rate:.3f} adaptive={summary.adaptive_hall_rate:.3f}"
+        )
+        print(
+            f"Latency ms (mean): baseline={summary.baseline_time_ms_mean:.1f} default={summary.default_time_ms_mean:.1f} adaptive={summary.adaptive_time_ms_mean:.1f}"
+        )
         if args.report_trap_share:
-            print(f"Trap-share (mean): baseline={(summary.baseline_trap_share_mean or 0.0):.3f} default={(summary.default_trap_share_mean or 0.0):.3f} adaptive={(summary.adaptive_trap_share_mean or 0.0):.3f}")
+            print(
+                f"Trap-share (mean): baseline={(summary.baseline_trap_share_mean or 0.0):.3f} default={(summary.default_trap_share_mean or 0.0):.3f} adaptive={(summary.adaptive_trap_share_mean or 0.0):.3f}"
+            )
 
 
 if __name__ == "__main__":

@@ -15,10 +15,11 @@ BASE_EVENT = {
     "data": {
         "object": {
             "metadata": {"api_key": "user_key_test"},
-            "items": {"data": [{"price": {"id": "price_free"}}]}
+            "items": {"data": [{"price": {"id": "price_free"}}]},
         }
-    }
+    },
 }
+
 
 def test_webhook_first_then_duplicate(monkeypatch):
     # Ensure price map maps price_free to free

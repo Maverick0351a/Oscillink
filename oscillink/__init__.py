@@ -11,30 +11,31 @@ from .preprocess.diffusion import compute_diffusion_gates  # noqa: F401
 Oscillink = OscillinkLattice
 
 __all__ = [
-	"Oscillink",
-	"OscillinkLattice",
-	"verify_receipt",
-	"verify_receipt_mode",
-	"compare_perf",
-	"compare_provenance",
-	"compute_diffusion_gates",
+    "Oscillink",
+    "OscillinkLattice",
+    "verify_receipt",
+    "verify_receipt_mode",
+    "compare_perf",
+    "compare_provenance",
+    "compute_diffusion_gates",
 ]
 try:
-	# Prefer package metadata when installed (including editable installs)
-	from importlib.metadata import version as _pkg_version
-	__version__ = _pkg_version("oscillink")
+    # Prefer package metadata when installed (including editable installs)
+    from importlib.metadata import version as _pkg_version
+
+    __version__ = _pkg_version("oscillink")
 except Exception:
-	# Fallback default (will be overridden by pyproject probe below when available)
-	__version__ = "0.1.9"
+    # Fallback default (will be overridden by pyproject probe below when available)
+    __version__ = "0.1.9"
 
 # In development/editable mode, a local pyproject.toml may be present; prefer its version
 try:
-	_root = Path(__file__).resolve().parents[1]
-	_py = _root / "pyproject.toml"
-	if _py.exists():
-		_text = _py.read_text(encoding="utf-8")
-		_m = re.search(r"(?m)^version\s*=\s*\"([^\"]+)\"", _text)
-		if _m:
-			__version__ = _m.group(1)
+    _root = Path(__file__).resolve().parents[1]
+    _py = _root / "pyproject.toml"
+    if _py.exists():
+        _text = _py.read_text(encoding="utf-8")
+        _m = re.search(r"(?m)^version\s*=\s*\"([^\"]+)\"", _text)
+        if _m:
+            __version__ = _m.group(1)
 except Exception:
-	pass
+    pass

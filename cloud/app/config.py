@@ -19,6 +19,7 @@ class Settings:
             return set()
         return {k.strip() for k in self.api_keys_raw.split(",") if k.strip()}
 
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

@@ -2,8 +2,20 @@ from oscillink.core.perf import compare_perf
 
 
 def test_compare_perf_default_metrics_and_failures():
-    baseline = {"aggregates": {"build_ms": {"mean": 10.0}, "settle_ms": {"mean": 10.0}, "receipt_ms": {"mean": 5.0}}}
-    current = {"aggregates": {"build_ms": {"mean": 11.0}, "settle_ms": {"mean": 15.0}, "receipt_ms": {"mean": 7.0}}}
+    baseline = {
+        "aggregates": {
+            "build_ms": {"mean": 10.0},
+            "settle_ms": {"mean": 10.0},
+            "receipt_ms": {"mean": 5.0},
+        }
+    }
+    current = {
+        "aggregates": {
+            "build_ms": {"mean": 11.0},
+            "settle_ms": {"mean": 15.0},
+            "receipt_ms": {"mean": 7.0},
+        }
+    }
     out = compare_perf(baseline, current, tolerance_pct=20.0)
     # build within 20%, settle and receipt > 20%
     assert out["failures"] and any(f["metric"] == "settle_ms" for f in out["failures"])

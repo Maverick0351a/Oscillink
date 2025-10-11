@@ -22,7 +22,7 @@ class _Resp:
 
 def test_http_request_returns_json(monkeypatch):
     def fake_urlopen(req, timeout=30):
-        return _Resp(b"{\n  \"ok\": 1\n}", "application/json; charset=utf-8")
+        return _Resp(b'{\n  "ok": 1\n}', "application/json; charset=utf-8")
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     out = cli._http_request("GET", "http://example")
@@ -45,7 +45,11 @@ def test_http_request_http_error_raises_runtime_error(monkeypatch):
         headers["Content-Type"] = "text/plain"
         return (_ for _ in ()).throw(
             urllib.error.HTTPError(
-                url="http://example", code=400, msg="Bad Request", hdrs=headers, fp=io.BytesIO(b"oops")
+                url="http://example",
+                code=400,
+                msg="Bad Request",
+                hdrs=headers,
+                fp=io.BytesIO(b"oops"),
             )
         )
 

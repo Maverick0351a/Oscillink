@@ -126,6 +126,7 @@ def get_active_profile(api_key: Optional[str]) -> Tuple[str, Dict[str, Any]]:
         return "baseline", {}
     try:  # pragma: no cover - external dependency
         from google.cloud import firestore  # type: ignore
+
         client = firestore.Client()
         snap = client.collection(_collection()).document(api_key).get()
         if not snap.exists:
@@ -174,11 +175,13 @@ def propose_overrides(
                 return float(x) * float(max(0.5, min(2.0, 1.0 + random.uniform(-s, s))))
             except Exception:
                 return x
+
         def jaddk(k: int) -> int:
             try:
                 return int(k) + random.choice([-1, 0, 1])
             except Exception:
                 return k
+
         exp = {
             "lamG": _clip("lamG", jmul(working["lamG"])),
             "lamC": _clip("lamC", jmul(working["lamC"])),
@@ -249,7 +252,9 @@ def _record_observation_impl(
     ema_score = float((data or {}).get("ema_score", float("-inf")))
     obs_since_promo = int((data or {}).get("obs_since_promo", 0))
     last_promoted_at = float((data or {}).get("last_promoted_at", 0.0))
-    current_active = (data.get("active_profile_id") if isinstance(data, dict) else None) or profile_id
+    current_active = (
+        data.get("active_profile_id") if isinstance(data, dict) else None
+    ) or profile_id
 
     # compute score
     score = _score(metrics)
@@ -267,7 +272,11 @@ def _record_observation_impl(
 
     # Decide promotion eligibility
     now_ts = _time.time()
-    eligible = improved and ((obs_since_promo + 1) >= min_obs_needed) and ((now_ts - last_promoted_at) >= min_sec_needed)
+    eligible = (
+        improved
+        and ((obs_since_promo + 1) >= min_obs_needed)
+        and ((now_ts - last_promoted_at) >= min_sec_needed)
+    )
 
     new_lp = dict(lp)
     did_promote = False

@@ -28,7 +28,9 @@ def test_verify_receipt_ok():
 
 def test_verify_receipt_mode_strict_and_minimal_subset():
     rec, secret = _signed(sig_v=2, mode="extended")
-    ok, payload = verify_receipt_mode(rec, secret, require_mode=None, minimal_subset=False, required_sig_v=2)
+    ok, payload = verify_receipt_mode(
+        rec, secret, require_mode=None, minimal_subset=False, required_sig_v=2
+    )
     assert ok and payload is not None and payload["mode"] == "extended"
 
     ok2, payload2 = verify_receipt_mode(rec, secret, require_mode="minimal", minimal_subset=True)
@@ -50,7 +52,9 @@ def test_verify_receipt_mode_minimal_success():
     raw = json.dumps(payload, sort_keys=True).encode("utf-8")
     secret = b"s"
     sig = hmac.new(secret, raw, hashlib.sha256).hexdigest()
-    rec = {"meta": {"signature": {"algorithm": "HMAC-SHA256", "payload": payload, "signature": sig}}}
+    rec = {
+        "meta": {"signature": {"algorithm": "HMAC-SHA256", "payload": payload, "signature": sig}}
+    }
     ok, pl = verify_receipt_mode(rec, secret, require_mode="minimal", minimal_subset=True)
     assert ok and pl is not None and pl["mode"] == "minimal"
 
@@ -76,7 +80,11 @@ def test_verify_receipt_bad_algorithm_and_missing_fields():
 
 def test_verify_receipt_exception_paths():
     # payload not JSON-serializable triggers exception
-    rec = {"meta": {"signature": {"algorithm": "HMAC-SHA256", "payload": {"x": object()}, "signature": "x"}}}
+    rec = {
+        "meta": {
+            "signature": {"algorithm": "HMAC-SHA256", "payload": {"x": object()}, "signature": "x"}
+        }
+    }
     assert verify_receipt(rec, b"s") is False
     ok, payload = verify_receipt_mode(rec, b"s")
     assert ok is False and payload is None

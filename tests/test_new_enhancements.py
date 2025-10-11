@@ -10,8 +10,8 @@ def test_receipt_meta_and_version():
     lat.set_query(psi)
     lat.settle(max_iters=4)
     r = lat.receipt()
-    assert 'version' in r and 'meta' in r and isinstance(r['meta'], dict)
-    assert 'ustar_solves' in r['meta'] and r['meta']['ustar_solves'] >= 1
+    assert "version" in r and "meta" in r and isinstance(r["meta"], dict)
+    assert "ustar_solves" in r["meta"] and r["meta"]["ustar_solves"] >= 1
 
 
 def test_refresh_Ustar_forces_new_solve():
@@ -20,9 +20,9 @@ def test_refresh_Ustar_forces_new_solve():
     lat = OscillinkLattice(Y)
     lat.set_query(psi)
     lat.receipt()  # compute & cache
-    solves_before = lat.stats['ustar_solves']
+    solves_before = lat.stats["ustar_solves"]
     lat.refresh_Ustar()
-    assert lat.stats['ustar_solves'] == solves_before + 1
+    assert lat.stats["ustar_solves"] == solves_before + 1
 
 
 def test_settle_callback_invoked():
@@ -31,12 +31,14 @@ def test_settle_callback_invoked():
     lat = OscillinkLattice(Y)
     lat.set_query(psi)
     called = {}
+
     def cb(lattice, stats):
-        called['ok'] = True
-        called['iters'] = stats['iters']
+        called["ok"] = True
+        called["iters"] = stats["iters"]
+
     lat.add_settle_callback(cb)
     lat.settle(max_iters=3)
-    assert called.get('ok') is True and 'iters' in called
+    assert called.get("ok") is True and "iters" in called
     lat.remove_settle_callback(cb)
     # ensure removal doesn't break anything
     lat.settle(max_iters=2)

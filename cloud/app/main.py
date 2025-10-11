@@ -8,8 +8,8 @@ import os
 import smtplib
 import time
 import uuid
-from email.message import EmailMessage
 from collections import OrderedDict
+from email.message import EmailMessage
 from typing import Any
 
 # Third-party
@@ -30,6 +30,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from oscillink import OscillinkLattice, __version__
 
+from .autocorrect import router as autocorrect_router
+from .benchmarks import router as benchmarks_router
 from .billing import (
     TIER_CATALOG,
     current_period,
@@ -40,18 +42,18 @@ from .billing import (
 from .config import get_settings
 from .features import resolve_features
 from .keystore import InMemoryKeyStore, KeyMetadata, get_keystore  # type: ignore
-from .models import AdminKeyResponse, AdminKeyUpdate, HealthResponse, ReceiptResponse, SettleRequest
 from .learners import propose_overrides, record_observation
+from .models import AdminKeyResponse, AdminKeyUpdate, HealthResponse, ReceiptResponse, SettleRequest
 from .redis_backend import get_with_ttl, incr_with_window, redis_enabled, set_with_ttl
 from .runtime_config import get_api_keys, get_quota_config, get_rate_limit
-from .autocorrect import router as autocorrect_router
-from .benchmarks import router as benchmarks_router
 
 app = FastAPI(title="Oscillink Cloud API", default_response_class=ORJSONResponse)
 
 # --- Security & Ops Middlewares (configurable via env) ---
 _ALLOW_ORIGINS = os.getenv("OSCILLINK_CORS_ALLOW_ORIGINS", "").strip()
-_TRUSTED_HOSTS = os.getenv("OSCILLINK_TRUSTED_HOSTS", "").strip()  # e.g. "api.example.com,.example.com"
+_TRUSTED_HOSTS = os.getenv(
+    "OSCILLINK_TRUSTED_HOSTS", ""
+).strip()  # e.g. "api.example.com,.example.com"
 _FORCE_HTTPS = os.getenv("OSCILLINK_FORCE_HTTPS", "0") in {"1", "true", "TRUE", "on"}
 
 if _ALLOW_ORIGINS:
@@ -76,6 +78,7 @@ app.include_router(benchmarks_router)
 
 MAX_BODY_BYTES = int(os.getenv("OSCILLINK_MAX_BODY_BYTES", "1048576"))  # 1MB default
 
+
 @app.middleware("http")
 async def body_size_guard(request: Request, call_next):
     # Read body only if content-length not provided or suspicious; rely on header when present
@@ -87,10 +90,13 @@ async def body_size_guard(request: Request, call_next):
     body = await request.body()
     if len(body) > MAX_BODY_BYTES:
         return ORJSONResponse(status_code=413, content={"detail": "payload too large"})
+
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
+
     request._receive = receive  # type: ignore[attr-defined]
     return await call_next(request)
+
 
 REQUEST_ID_HEADER = "x-request-id"
 
@@ -113,27 +119,23 @@ if "oscillink_settle_requests_total" in REGISTRY._names_to_collectors:  # type: 
     USAGE_NODE_DIM_UNITS = REGISTRY._names_to_collectors["oscillink_usage_node_dim_units_total"]  # type: ignore
     JOB_QUEUE_DEPTH = REGISTRY._names_to_collectors.get("oscillink_job_queue_depth")  # type: ignore
     if "oscillink_stripe_webhook_events_total" in REGISTRY._names_to_collectors:  # type: ignore[attr-defined]
-        STRIPE_WEBHOOK_EVENTS = REGISTRY._names_to_collectors["oscillink_stripe_webhook_events_total"]  # type: ignore
+        STRIPE_WEBHOOK_EVENTS = REGISTRY._names_to_collectors[
+            "oscillink_stripe_webhook_events_total"
+        ]  # type: ignore
     else:
         STRIPE_WEBHOOK_EVENTS = Counter(
             "oscillink_stripe_webhook_events_total", "Stripe webhook events", ["result"]
         )
 else:
-    SETTLE_COUNTER = Counter(
-        "oscillink_settle_requests_total", "Total settle requests", ["status"]
-    )
+    SETTLE_COUNTER = Counter("oscillink_settle_requests_total", "Total settle requests", ["status"])
     SETTLE_LATENCY = Histogram(
-        "oscillink_settle_latency_seconds", "Settle latency", buckets=(0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0,2.5,5.0)
+        "oscillink_settle_latency_seconds",
+        "Settle latency",
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
     )
-    SETTLE_N_GAUGE = Gauge(
-        "oscillink_settle_last_N", "N of last settle"
-    )
-    SETTLE_D_GAUGE = Gauge(
-        "oscillink_settle_last_D", "D of last settle"
-    )
-    USAGE_NODES = Counter(
-        "oscillink_usage_nodes_total", "Total nodes processed"
-    )
+    SETTLE_N_GAUGE = Gauge("oscillink_settle_last_N", "N of last settle")
+    SETTLE_D_GAUGE = Gauge("oscillink_settle_last_D", "D of last settle")
+    USAGE_NODES = Counter("oscillink_usage_nodes_total", "Total nodes processed")
     USAGE_NODE_DIM_UNITS = Counter(
         "oscillink_usage_node_dim_units_total", "Total node-dimension units processed (sum N*D)"
     )
@@ -152,11 +154,13 @@ _monthly_usage: dict[str, dict[str, int | str]] = {}
 # monthly counters (units used in the current period) are persisted and shared across processes.
 _MONTHLY_USAGE_COLLECTION = os.getenv("OSCILLINK_MONTHLY_USAGE_COLLECTION", "").strip()
 
+
 def _load_monthly_usage_doc(api_key: str, period: str):  # pragma: no cover - external dependency
     if not _MONTHLY_USAGE_COLLECTION:
         return None
     try:
         from google.cloud import firestore  # type: ignore
+
         client = firestore.Client()
         doc_id = f"{api_key}:{period}"
         snap = client.collection(_MONTHLY_USAGE_COLLECTION).document(doc_id).get()
@@ -166,14 +170,19 @@ def _load_monthly_usage_doc(api_key: str, period: str):  # pragma: no cover - ex
         return None
     return None
 
-def _update_monthly_usage_doc(api_key: str, period: str, used: int):  # pragma: no cover - external dependency
+
+def _update_monthly_usage_doc(
+    api_key: str, period: str, used: int
+):  # pragma: no cover - external dependency
     if not _MONTHLY_USAGE_COLLECTION:
         return
     try:
         from google.cloud import firestore  # type: ignore
+
         client = firestore.Client()
         doc_id = f"{api_key}:{period}"
         doc_ref = client.collection(_MONTHLY_USAGE_COLLECTION).document(doc_id)
+
         # Use transaction (optimistic) to avoid lost updates; fall back to blind set on failure.
         @firestore.transactional
         def _tx_update(tx, ref):  # type: ignore
@@ -183,15 +192,29 @@ def _update_monthly_usage_doc(api_key: str, period: str, used: int):  # pragma: 
                 data["used"] = used
                 tx.set(ref, data, merge=False)
             else:
-                tx.set(ref, {"api_key": api_key, "period": period, "used": used, "updated_at": time.time(), "created_at": time.time()})
+                tx.set(
+                    ref,
+                    {
+                        "api_key": api_key,
+                        "period": period,
+                        "used": used,
+                        "updated_at": time.time(),
+                        "created_at": time.time(),
+                    },
+                )
+
         try:
             tx = client.transaction()
             _tx_update(tx, doc_ref)
         except Exception:
             # Blind overwrite (eventual consistency acceptable for quota enforcement best-effort)
-            doc_ref.set({"api_key": api_key, "period": period, "used": used, "updated_at": time.time()}, merge=True)
+            doc_ref.set(
+                {"api_key": api_key, "period": period, "used": used, "updated_at": time.time()},
+                merge=True,
+            )
     except Exception:
         pass
+
 
 def _check_monthly_cap(key: str | None, units: int):
     """Enforce per-tier monthly unit caps (best-effort in-memory).
@@ -221,16 +244,23 @@ def _check_monthly_cap(key: str | None, units: int):
         _monthly_usage[key] = rec  # type: ignore
     used = int(rec.get("used", 0))
     if units > cap:
-        raise HTTPException(status_code=413, detail=f"request units {units} exceed monthly cap {cap}")
+        raise HTTPException(
+            status_code=413, detail=f"request units {units} exceed monthly cap {cap}"
+        )
     if used + units > cap:
         remaining = max(cap - used, 0)
-        raise HTTPException(status_code=429, detail=f"monthly cap exceeded (cap={cap}, used={used})", headers={"X-MonthCap-Limit": str(cap), "X-MonthCap-Remaining": str(remaining)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"monthly cap exceeded (cap={cap}, used={used})",
+            headers={"X-MonthCap-Limit": str(cap), "X-MonthCap-Remaining": str(remaining)},
+        )
     new_used = used + units
     rec["used"] = new_used  # type: ignore
     # Best-effort persistence (async not required; cheap write) - ignore failures silently
     if _MONTHLY_USAGE_COLLECTION:
         _update_monthly_usage_doc(key, period, new_used)
     return {"limit": cap, "used": rec["used"], "remaining": cap - rec["used"], "period": period}
+
 
 def _check_and_consume_quota(key: str | None, units: int) -> tuple[int, int, float]:
     """Check quota for this key; consume units if allowed.
@@ -244,7 +274,11 @@ def _check_and_consume_quota(key: str | None, units: int) -> tuple[int, int, flo
         meta: KeyMetadata | None = get_keystore().get(key)
         if meta:
             q_limit = int(meta.quota_limit_units) if meta.quota_limit_units is not None else q.limit
-            q_window = int(meta.quota_window_seconds) if meta.quota_window_seconds is not None else q.window
+            q_window = (
+                int(meta.quota_window_seconds)
+                if meta.quota_window_seconds is not None
+                else q.window
+            )
         else:
             q_limit, q_window = q.limit, q.window
     else:
@@ -254,11 +288,18 @@ def _check_and_consume_quota(key: str | None, units: int) -> tuple[int, int, flo
         return -1, 0, 0
     now = time.time()
     rec = _key_usage.get(key)
-    if not rec or now - rec["window_start"] >= q_window or rec.get("limit") != q_limit or rec.get("window") != q_window:
+    if (
+        not rec
+        or now - rec["window_start"] >= q_window
+        or rec.get("limit") != q_limit
+        or rec.get("window") != q_window
+    ):
         rec = {"window_start": now, "used": 0.0, "limit": q_limit, "window": q_window}
         _key_usage[key] = rec
     if units > q_limit:
-        raise HTTPException(status_code=413, detail=f"request units {units} exceed per-key limit {q_limit}")
+        raise HTTPException(
+            status_code=413, detail=f"request units {units} exceed per-key limit {q_limit}"
+        )
     if rec["used"] + units > q_limit:
         reset_at = rec["window_start"] + q_window
         headers = {
@@ -273,6 +314,7 @@ def _check_and_consume_quota(key: str | None, units: int) -> tuple[int, int, flo
     reset_at = rec["window_start"] + q_window
     return remaining, q_limit, reset_at
 
+
 def _quota_headers(remaining: int, limit: int, reset_epoch: float) -> dict[str, str]:
     if remaining < 0:
         return {}
@@ -281,6 +323,7 @@ def _quota_headers(remaining: int, limit: int, reset_epoch: float) -> dict[str, 
         "X-Quota-Remaining": str(max(remaining, 0)),
         "X-Quota-Reset": str(int(reset_epoch)),
     }
+
 
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
@@ -303,8 +346,10 @@ async def add_security_headers(request: Request, call_next):
     resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
     return resp
 
+
 # ---------------- Per-IP Rate Limiting (in-memory) -----------------
 _ip_rl_counters: dict[str, dict[str, float]] = {}
+
 
 def _ip_rate_limit_config():
     """Fetch current per-IP rate limit configuration from environment.
@@ -322,6 +367,7 @@ def _ip_rate_limit_config():
     trust_xff = os.getenv("OSCILLINK_TRUST_XFF", "0") in {"1", "true", "TRUE", "on"}
     return limit, max(1, window), trust_xff
 
+
 def _client_ip(request: Request, trust_xff: bool) -> str:
     if trust_xff:
         xff = request.headers.get("x-forwarded-for")
@@ -336,6 +382,7 @@ def _client_ip(request: Request, trust_xff: bool) -> str:
     except Exception:
         pass
     return "unknown"
+
 
 @app.middleware("http")
 async def per_ip_rate_limit_mw(request: Request, call_next):
@@ -360,7 +407,9 @@ async def per_ip_rate_limit_mw(request: Request, call_next):
                     "X-IPLimit-Remaining": "0",
                     "X-IPLimit-Reset": str(reset_at),
                 }
-                return ORJSONResponse(status_code=429, content={"detail": "ip rate limit exceeded"}, headers=headers)
+                return ORJSONResponse(
+                    status_code=429, content={"detail": "ip rate limit exceeded"}, headers=headers
+                )
             response = await call_next(request)
             remaining = max(limit - int(count), 0)
             reset_at = int(now + (ttl if ttl >= 0 else window))
@@ -370,7 +419,12 @@ async def per_ip_rate_limit_mw(request: Request, call_next):
             return response
     # Fallback to in-memory counters
     rec = _ip_rl_counters.get(ip)
-    if not rec or now - rec["window_start"] >= window or rec.get("limit") != float(limit) or rec.get("window") != float(window):
+    if (
+        not rec
+        or now - rec["window_start"] >= window
+        or rec.get("limit") != float(limit)
+        or rec.get("window") != float(window)
+    ):
         rec = {"window_start": now, "count": 0.0, "limit": float(limit), "window": float(window)}
         _ip_rl_counters[ip] = rec  # type: ignore
     if rec["count"] >= limit:
@@ -381,7 +435,9 @@ async def per_ip_rate_limit_mw(request: Request, call_next):
             "X-IPLimit-Remaining": "0",
             "X-IPLimit-Reset": str(int(reset_at)),
         }
-        return ORJSONResponse(status_code=429, content={"detail": "ip rate limit exceeded"}, headers=headers)
+        return ORJSONResponse(
+            status_code=429, content={"detail": "ip rate limit exceeded"}, headers=headers
+        )
     rec["count"] += 1
     response = await call_next(request)
     remaining = max(limit - int(rec["count"]), 0)
@@ -390,7 +446,9 @@ async def per_ip_rate_limit_mw(request: Request, call_next):
     response.headers.setdefault("X-IPLimit-Reset", str(int(rec["window_start"] + window)))
     return response
 
+
 _rl_state = {"window_start": time.time(), "count": 0, "limit": 0, "window": 60}
+
 
 @app.middleware("http")
 async def rate_limit_mw(request: Request, call_next):
@@ -403,7 +461,11 @@ async def rate_limit_mw(request: Request, call_next):
     if redis_enabled():
         key = f"grl:{_rl_state['window']}"
         count, ttl = incr_with_window(key, _rl_state["window"], amount=1)
-        if request.url.path not in ("/health", "/metrics") and count > _rl_state["limit"] and ttl != -2:
+        if (
+            request.url.path not in ("/health", "/metrics")
+            and count > _rl_state["limit"]
+            and ttl != -2
+        ):
             reset_at = int(now + (ttl if ttl >= 0 else _rl_state["window"]))
             headers = {
                 "Retry-After": str(int(max(reset_at - now, 0)) + 1),
@@ -411,7 +473,9 @@ async def rate_limit_mw(request: Request, call_next):
                 "X-RateLimit-Remaining": "0",
                 "X-RateLimit-Reset": str(reset_at),
             }
-            return ORJSONResponse(status_code=429, content={"detail": "rate limit exceeded"}, headers=headers)
+            return ORJSONResponse(
+                status_code=429, content={"detail": "rate limit exceeded"}, headers=headers
+            )
         resp = await call_next(request)
         remaining = max(_rl_state["limit"] - int(count), 0)
         reset_at = int(now + (ttl if ttl >= 0 else _rl_state["window"]))
@@ -427,27 +491,40 @@ async def rate_limit_mw(request: Request, call_next):
     if _rl_state["count"] >= _rl_state["limit"] and request.url.path not in ("/health", "/metrics"):
         reset_in = _rl_state["window"] - (now - _rl_state["window_start"])
         headers = {
-            "Retry-After": f"{int(reset_in)+1}",
+            "Retry-After": f"{int(reset_in) + 1}",
             "X-RateLimit-Limit": str(_rl_state["limit"]),
             "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset": str(int(_rl_state["window_start"] + _rl_state["window"]))
+            "X-RateLimit-Reset": str(int(_rl_state["window_start"] + _rl_state["window"])),
         }
-        return ORJSONResponse(status_code=429, content={"detail": "rate limit exceeded"}, headers=headers)
+        return ORJSONResponse(
+            status_code=429, content={"detail": "rate limit exceeded"}, headers=headers
+        )
     _rl_state["count"] += 1
     resp = await call_next(request)
     remaining = max(_rl_state["limit"] - _rl_state["count"], 0)
     resp.headers.setdefault("X-RateLimit-Limit", str(_rl_state["limit"]))
     resp.headers.setdefault("X-RateLimit-Remaining", str(remaining))
-    resp.headers.setdefault("X-RateLimit-Reset", str(int(_rl_state["window_start"] + _rl_state["window"])))
+    resp.headers.setdefault(
+        "X-RateLimit-Reset", str(int(_rl_state["window_start"] + _rl_state["window"]))
+    )
     return resp
-_API_VERSION = get_settings().api_version  # capture at import for routing; other settings fetched dynamically
-_ENV_KEYS_FINGERPRINT = {"api_keys": os.getenv("OSCILLINK_API_KEYS", ""), "tiers": os.getenv("OSCILLINK_KEY_TIERS", "")}
+
+
+_API_VERSION = (
+    get_settings().api_version
+)  # capture at import for routing; other settings fetched dynamically
+_ENV_KEYS_FINGERPRINT = {
+    "api_keys": os.getenv("OSCILLINK_API_KEYS", ""),
+    "tiers": os.getenv("OSCILLINK_KEY_TIERS", ""),
+}
 
 # ---------------- Bundle Cache (per-key, TTL LRU) -----------------
 _bundle_cache: dict[str, "OrderedDict[str, dict]"] = {}
 
+
 def _cache_enabled() -> bool:
     return os.getenv("OSCILLINK_CACHE_ENABLE", "0").lower() in {"1", "true", "on", "yes"}
+
 
 def _cache_ttl() -> int:
     try:
@@ -455,11 +532,13 @@ def _cache_ttl() -> int:
     except Exception:
         return 300
 
+
 def _cache_cap() -> int:
     try:
         return max(1, int(os.getenv("OSCILLINK_CACHE_CAP", "128")))
     except Exception:
         return 128
+
 
 def _bundle_cache_get(api_key: str | None, sig: str):
     if not (_cache_enabled() and api_key and sig):
@@ -493,6 +572,7 @@ def _bundle_cache_get(api_key: str | None, sig: str):
         pass
     return rec
 
+
 def _bundle_cache_put(api_key: str | None, sig: str, bundle: list[dict]):
     if not (_cache_enabled() and api_key and sig and isinstance(bundle, list)):
         return
@@ -510,6 +590,7 @@ def _bundle_cache_put(api_key: str | None, sig: str, bundle: list[dict]):
         except Exception:
             break
 
+
 # In-memory async job store (non-persistent, single-process)
 _jobs: dict[str, dict] = {}
 _JOB_TTL_SEC = 3600
@@ -518,6 +599,7 @@ _JOB_TTL_SEC = 3600
 USAGE_LOG_PATH = os.getenv("OSCILLINK_USAGE_LOG")  # if set, append JSON lines
 USAGE_LOG_SIGNING_SECRET = os.getenv("OSCILLINK_USAGE_SIGNING_SECRET")  # optional HMAC secret
 
+
 def _append_usage(record: dict):
     if not USAGE_LOG_PATH:
         return
@@ -525,7 +607,9 @@ def _append_usage(record: dict):
         if USAGE_LOG_SIGNING_SECRET:
             # compute signature over deterministic canonical form of payload fields (exclude signature itself)
             payload = json.dumps(record, separators=(",", ":"), sort_keys=True)
-            sig = hmac.new(USAGE_LOG_SIGNING_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+            sig = hmac.new(
+                USAGE_LOG_SIGNING_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+            ).hexdigest()
             record = {**record, "sig": {"alg": "HS256", "h": sig}}
         # minimal defensiveness: ensure directory exists (if path includes directory component)
         dir_part = os.path.dirname(USAGE_LOG_PATH)
@@ -537,10 +621,12 @@ def _append_usage(record: dict):
         # Silent failure; logging framework could be integrated later
         pass
 
+
 # ---------------- Webhook Event Logging / Idempotency -----------------
 # Shared in-memory webhook events store (stable across TestClient instances)
 
 _STRIPE_EVENTS_COUNT = 0
+
 
 class _WebhookEventsWrapper:
     """Wrapper around app.state.webhook_events that also tracks a stable count.
@@ -549,11 +635,14 @@ class _WebhookEventsWrapper:
     the number of unique events recorded in this process regardless of any internal
     rebindings of the underlying dict.
     """
+
     def __init__(self, app_ref: FastAPI):
         self._app = app_ref
 
     def _store(self) -> dict:
-        if not hasattr(self._app.state, "webhook_events") or not isinstance(self._app.state.webhook_events, dict):  # type: ignore[attr-defined]
+        if not hasattr(self._app.state, "webhook_events") or not isinstance(
+            self._app.state.webhook_events, dict
+        ):  # type: ignore[attr-defined]
             self._app.state.webhook_events = {}
         return self._app.state.webhook_events  # type: ignore[attr-defined]
 
@@ -589,10 +678,13 @@ class _WebhookEventsWrapper:
     def __len__(self):
         return _STRIPE_EVENTS_COUNT
 
+
 _webhook_events_mem = _WebhookEventsWrapper(app)
+
 
 def _webhook_events_collection():
     return os.getenv("OSCILLINK_WEBHOOK_EVENTS_COLLECTION", "").strip()
+
 
 def _webhook_get(event_id: str):
     # Memory first
@@ -611,6 +703,7 @@ def _webhook_get(event_id: str):
         return None
     try:  # pragma: no cover - external dependency path
         from google.cloud import firestore  # type: ignore
+
         client = firestore.Client()
         snap = client.collection(coll).document(event_id).get()
         if snap.exists:
@@ -618,6 +711,7 @@ def _webhook_get(event_id: str):
     except Exception:
         return None
     return None
+
 
 def _webhook_store(event_id: str, record: dict):
     # Always store in memory for fast duplicate checks
@@ -637,6 +731,7 @@ def _webhook_store(event_id: str, record: dict):
         return
     try:  # pragma: no cover - external dependency path
         from google.cloud import firestore  # type: ignore
+
         client = firestore.Client()
         # Use create to preserve idempotency (do not overwrite existing)
         doc_ref = client.collection(coll).document(event_id)
@@ -646,16 +741,18 @@ def _webhook_store(event_id: str, record: dict):
         # Swallow errors silently (observability layer can catch later)
         pass
 
+
 def _purge_old_jobs():
     now = time.time()
     expired = [jid for jid, rec in _jobs.items() if now - rec.get("created", now) > _JOB_TTL_SEC]
     for jid in expired:
         _jobs.pop(jid, None)
-    if 'JOB_QUEUE_DEPTH' in globals():
+    if "JOB_QUEUE_DEPTH" in globals():
         try:
             JOB_QUEUE_DEPTH.set(len(_jobs))  # type: ignore
         except Exception:
             pass
+
 
 def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
     """Return api_key (may be None for open access) after validation.
@@ -668,12 +765,16 @@ def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
     ks = get_keystore()
     # Hot-reload for InMemoryKeyStore when env lists change (development/testing convenience)
     global _ENV_KEYS_FINGERPRINT
-    current_fp = {"api_keys": os.getenv("OSCILLINK_API_KEYS", ""), "tiers": os.getenv("OSCILLINK_KEY_TIERS", "")}
+    current_fp = {
+        "api_keys": os.getenv("OSCILLINK_API_KEYS", ""),
+        "tiers": os.getenv("OSCILLINK_KEY_TIERS", ""),
+    }
     if current_fp != _ENV_KEYS_FINGERPRINT and isinstance(ks, InMemoryKeyStore):  # type: ignore
         # Recreate in-memory keystore to pick up new env keys/tiers
         # Replace global singleton
         from cloud.app import keystore as _kmod  # noqa: I001 (local hot-reload import)
         from cloud.app.keystore import InMemoryKeyStore as _IMKS  # noqa: N814,I001 local import to avoid cycle
+
         _kmod._key_store = _IMKS()
         ks = get_keystore()
         _ENV_KEYS_FINGERPRINT = current_fp
@@ -712,7 +813,7 @@ def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
             # Check if any keys exist in memory; if none, open access
             # Access protected member of InMemoryKeyStore cautiously
             try:
-                if not getattr(ks, '_keys', {}):
+                if not getattr(ks, "_keys", {}):
                     return None
             except Exception:
                 pass
@@ -720,6 +821,7 @@ def api_key_guard(x_api_key: str | None = Header(default=None)):  # noqa: C901
     allowed = get_api_keys()
     # If we reach here, open access (no env key list)
     return None
+
 
 def feature_context(x_api_key: str | None = Depends(api_key_guard)):
     """Resolve feature bundle for request.
@@ -730,18 +832,25 @@ def feature_context(x_api_key: str | None = Depends(api_key_guard)):
     features = resolve_features(meta)
     return {"api_key": x_api_key, "features": features}
 
+
 def _check_diffusion_allowed(req: SettleRequest, feats) -> None:
     if req.gates is not None:
         if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
             raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
         if not feats.diffusion_allowed:
-            raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
+            raise HTTPException(
+                status_code=403, detail="diffusion gating not enabled for this tier"
+            )
+
 
 @app.get("/health", response_model=HealthResponse)
 def health():
     return HealthResponse(status="ok", version=__version__)
 
-def _build_lattice(req: SettleRequest, api_key: str | None = None) -> tuple[OscillinkLattice, int, int, int, dict, str]:
+
+def _build_lattice(
+    req: SettleRequest, api_key: str | None = None
+) -> tuple[OscillinkLattice, int, int, int, dict, str]:
     Y = np.array(req.Y, dtype=np.float32)
     N, D = Y.shape
     if N == 0 or D == 0:
@@ -752,12 +861,15 @@ def _build_lattice(req: SettleRequest, api_key: str | None = None) -> tuple[Osci
     if s.max_dim < D:
         raise HTTPException(status_code=413, detail=f"D>{s.max_dim} exceeds limit")
     # Load adaptive profile overrides (cloud-only, optional) with exploration
-    profile_id, overrides = propose_overrides(api_key, base={
-        "lamG": req.params.lamG,
-        "lamC": req.params.lamC,
-        "lamQ": req.params.lamQ,
-        "kneighbors": req.params.kneighbors,
-    })
+    profile_id, overrides = propose_overrides(
+        api_key,
+        base={
+            "lamG": req.params.lamG,
+            "lamC": req.params.lamC,
+            "lamQ": req.params.lamQ,
+            "kneighbors": req.params.kneighbors,
+        },
+    )
     # Apply safe overrides
     lamG = float(overrides.get("lamG", req.params.lamG))
     lamC = float(overrides.get("lamC", req.params.lamC))
@@ -789,17 +901,52 @@ def _build_lattice(req: SettleRequest, api_key: str | None = None) -> tuple[Osci
             raise HTTPException(status_code=400, detail="chain must have >=2 nodes")
 
         lat.add_chain(req.chain, lamP=req.params.lamP)
-    return lat, N, D, k_eff, {"lamG": lamG, "lamC": lamC, "lamQ": lamQ, "kneighbors": k_eff}, profile_id
+    return (
+        lat,
+        N,
+        D,
+        k_eff,
+        {"lamG": lamG, "lamC": lamC, "lamQ": lamQ, "kneighbors": k_eff},
+        profile_id,
+    )
 
-def _safe_record_observation(api_key: str | None, profile_id: str, eff_params: dict, stats: dict, tol: float):
+
+def _safe_record_observation(
+    api_key: str | None, profile_id: str, eff_params: dict, stats: dict, tol: float
+):
     if not api_key:
         return
     try:
-        record_observation(api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": eff_params["kneighbors"]}, {"duration_ms": float(stats.get("duration_ms", 0.0)), "iters": int(stats.get("iters", 0)), "residual": float(stats.get("residual", 0.0)), "tol": float(tol)})
+        record_observation(
+            api_key,
+            profile_id,
+            {
+                "lamG": eff_params["lamG"],
+                "lamC": eff_params["lamC"],
+                "lamQ": eff_params["lamQ"],
+                "kneighbors": eff_params["kneighbors"],
+            },
+            {
+                "duration_ms": float(stats.get("duration_ms", 0.0)),
+                "iters": int(stats.get("iters", 0)),
+                "residual": float(stats.get("residual", 0.0)),
+                "tol": float(tol),
+            },
+        )
     except Exception:
         pass
 
-def _compute_bundle_with_cache(lat: OscillinkLattice, k: int, api_key: str | None, profile_id: str, eff_params: dict, dt: float, max_iters: int, tol: float):
+
+def _compute_bundle_with_cache(
+    lat: OscillinkLattice,
+    k: int,
+    api_key: str | None,
+    profile_id: str,
+    eff_params: dict,
+    dt: float,
+    max_iters: int,
+    tol: float,
+):
     """Return (bundle, elapsed_seconds, cache_status, state_sig, cache_rec_optional).
 
     Uses in-memory TTL LRU per-key cache keyed by state signature. On HIT, skips compute.
@@ -823,10 +970,26 @@ def _compute_bundle_with_cache(lat: OscillinkLattice, k: int, api_key: str | Non
         pass
     # Learning hook (best-effort)
     try:
-        record_observation(api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": eff_params.get("kneighbors", k)}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(tol)})
+        record_observation(
+            api_key,
+            profile_id,
+            {
+                "lamG": eff_params["lamG"],
+                "lamC": eff_params["lamC"],
+                "lamQ": eff_params["lamQ"],
+                "kneighbors": eff_params.get("kneighbors", k),
+            },
+            {
+                "duration_ms": 1000.0 * elapsed,
+                "iters": int(settle_stats.get("iters", 0)),
+                "residual": float(settle_stats.get("res", 0.0)),
+                "tol": float(tol),
+            },
+        )
     except Exception:
         pass
     return b, elapsed, "MISS", state_sig, None
+
 
 @app.post(f"/{_API_VERSION}/settle", response_model=ReceiptResponse)
 def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends(feature_context)):
@@ -841,7 +1004,9 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
 
     t0 = time.time()
     try:
-        settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+        settle_stats = lat.settle(
+            dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol
+        )
         elapsed = time.time() - t0
         SETTLE_COUNTER.labels(status="ok").inc()
     except Exception:
@@ -867,10 +1032,19 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
         "D": int(D),
         "kneighbors_requested": req.params.kneighbors,
         "kneighbors_effective": k_eff,
-        "lam": {"G": eff_params["lamG"], "C": eff_params["lamC"], "Q": eff_params["lamQ"], "P": req.params.lamP},
+        "lam": {
+            "G": eff_params["lamG"],
+            "C": eff_params["lamC"],
+            "Q": eff_params["lamQ"],
+            "P": req.params.lamP,
+        },
         "profile_id": profile_id,
     }
-    sig_meta = receipt.get("meta", {}).get("state_sig") if (receipt and isinstance(receipt.get("meta"), dict)) else None
+    sig_meta = (
+        receipt.get("meta", {}).get("state_sig")
+        if (receipt and isinstance(receipt.get("meta"), dict))
+        else None
+    )
     state_sig = sig_meta or lat._signature()
 
     # Build monthly usage block if present
@@ -884,7 +1058,17 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
         }
     # Learning hook (best-effort): record observation for EMA updates
     try:
-        record_observation(x_api_key, profile_id, {**eff_params}, {"duration_ms": t_settle, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+        record_observation(
+            x_api_key,
+            profile_id,
+            {**eff_params},
+            {
+                "duration_ms": t_settle,
+                "iters": int(settle_stats.get("iters", 0)),
+                "residual": float(settle_stats.get("res", 0.0)),
+                "tol": float(req.options.tol),
+            },
+        )
     except Exception:
         pass
 
@@ -893,7 +1077,14 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
         receipt=receipt,
         bundle=bundle,
         timings_ms={"total_settle_ms": t_settle},
-        meta={**meta, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": monthly_usage_block}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}},
+        meta={
+            **meta,
+            "request_id": request.headers.get(REQUEST_ID_HEADER, ""),
+            "usage": {"nodes": N, "node_dim_units": units, "monthly": monthly_usage_block},
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+        },
     )
     headers = _quota_headers(remaining, limit, reset_at)
     # Monthly headers (informational)
@@ -905,18 +1096,23 @@ def settle(req: SettleRequest, request: Request, response: Response, ctx=Depends
     for k, v in headers.items():
         response.headers.setdefault(k, v)
     response.headers.setdefault("X-Profile-Id", profile_id)
-    _append_usage({
-        "ts": time.time(),
-        "event": "settle",
-        "api_key": x_api_key,
-        "N": N,
-        "D": D,
-        "units": units,
-        "duration_ms": t_settle,
-        "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-        "monthly": monthly_usage_block,
-    })
+    _append_usage(
+        {
+            "ts": time.time(),
+            "event": "settle",
+            "api_key": x_api_key,
+            "N": N,
+            "D": D,
+            "units": units,
+            "duration_ms": t_settle,
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+            "monthly": monthly_usage_block,
+        }
+    )
     return resp
+
 
 @app.post(f"/{_API_VERSION}/receipt")
 def receipt(req: SettleRequest, request: Request, response: Response, ctx=Depends(feature_context)):
@@ -927,14 +1123,18 @@ def receipt(req: SettleRequest, request: Request, response: Response, ctx=Depend
         if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
             raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
         if not feats.diffusion_allowed:
-            raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
+            raise HTTPException(
+                status_code=403, detail="diffusion gating not enabled for this tier"
+            )
     lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
     units = N * D
     # Enforce monthly/quota BEFORE doing any compute to prevent free riding via failures after compute
     monthly_ctx = _check_monthly_cap(x_api_key, units)
     remaining, limit, reset_at = _check_and_consume_quota(x_api_key, units)
     t0 = time.time()
-    settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+    settle_stats = lat.settle(
+        dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol
+    )
     elapsed = time.time() - t0
     SETTLE_COUNTER.labels(status="ok").inc()
     SETTLE_LATENCY.observe(elapsed)
@@ -943,7 +1143,22 @@ def receipt(req: SettleRequest, request: Request, response: Response, ctx=Depend
     rec = lat.receipt()
     # Learning hook (best-effort)
     try:
-        record_observation(x_api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": k_eff}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+        record_observation(
+            x_api_key,
+            profile_id,
+            {
+                "lamG": eff_params["lamG"],
+                "lamC": eff_params["lamC"],
+                "lamQ": eff_params["lamQ"],
+                "kneighbors": k_eff,
+            },
+            {
+                "duration_ms": 1000.0 * elapsed,
+                "iters": int(settle_stats.get("iters", 0)),
+                "residual": float(settle_stats.get("res", 0.0)),
+                "tol": float(req.options.tol),
+            },
+        )
     except Exception:
         pass
     headers = _quota_headers(remaining, limit, reset_at)
@@ -955,23 +1170,57 @@ def receipt(req: SettleRequest, request: Request, response: Response, ctx=Depend
     for k, v in headers.items():
         response.headers.setdefault(k, v)
     response.headers.setdefault("X-Profile-Id", profile_id)
-    _append_usage({
-        "ts": time.time(),
-        "event": "receipt",
-        "api_key": x_api_key,
-        "N": N,
-        "D": D,
-        "units": units,
-        "duration_ms": 1000.0 * elapsed,
-        "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-        "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}
-    })
+    _append_usage(
+        {
+            "ts": time.time(),
+            "event": "receipt",
+            "api_key": x_api_key,
+            "N": N,
+            "D": D,
+            "units": units,
+            "duration_ms": 1000.0 * elapsed,
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+            "monthly": None
+            if not monthly_ctx
+            else {
+                "limit": monthly_ctx["limit"],
+                "used": monthly_ctx["used"],
+                "remaining": monthly_ctx["remaining"],
+                "period": monthly_ctx["period"],
+            },
+        }
+    )
     return {
         "state_sig": rec.get("meta", {}).get("state_sig"),
         "receipt": rec,
         "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
+        "meta": {
+            "N": N,
+            "D": D,
+            "kneighbors_requested": req.params.kneighbors,
+            "kneighbors_effective": k_eff,
+            "profile_id": profile_id,
+            "request_id": request.headers.get(REQUEST_ID_HEADER, ""),
+            "usage": {
+                "nodes": N,
+                "node_dim_units": units,
+                "monthly": None
+                if not monthly_ctx
+                else {
+                    "limit": monthly_ctx["limit"],
+                    "used": monthly_ctx["used"],
+                    "remaining": monthly_ctx["remaining"],
+                    "period": monthly_ctx["period"],
+                },
+            },
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+        },
     }
+
 
 @app.post(f"/{_API_VERSION}/bundle")
 def bundle(req: SettleRequest, request: Request, response: Response, ctx=Depends(feature_context)):
@@ -1017,28 +1266,65 @@ def bundle(req: SettleRequest, request: Request, response: Response, ctx=Depends
             response.headers.setdefault("X-Cache-Age", str(int(age)))
     except Exception:
         pass
-    _append_usage({
-        "ts": time.time(),
-        "event": "bundle",
-        "api_key": x_api_key,
-        "N": N,
-        "D": D,
-        "units": units,
-        "duration_ms": 1000.0 * elapsed,
-        "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-        "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}
-    })
+    _append_usage(
+        {
+            "ts": time.time(),
+            "event": "bundle",
+            "api_key": x_api_key,
+            "N": N,
+            "D": D,
+            "units": units,
+            "duration_ms": 1000.0 * elapsed,
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+            "monthly": None
+            if not monthly_ctx
+            else {
+                "limit": monthly_ctx["limit"],
+                "used": monthly_ctx["used"],
+                "remaining": monthly_ctx["remaining"],
+                "period": monthly_ctx["period"],
+            },
+        }
+    )
     return {
         "state_sig": state_sig,
         "bundle": b,
         "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
+        "meta": {
+            "N": N,
+            "D": D,
+            "kneighbors_requested": req.params.kneighbors,
+            "kneighbors_effective": k_eff,
+            "profile_id": profile_id,
+            "request_id": request.headers.get(REQUEST_ID_HEADER, ""),
+            "usage": {
+                "nodes": N,
+                "node_dim_units": units,
+                "monthly": None
+                if not monthly_ctx
+                else {
+                    "limit": monthly_ctx["limit"],
+                    "used": monthly_ctx["used"],
+                    "remaining": monthly_ctx["remaining"],
+                    "period": monthly_ctx["period"],
+                },
+            },
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+        },
     }
+
 
 ## Removed earlier draft Stripe webhook stub; consolidated full implementation later in file.
 
+
 @app.post(f"/{_API_VERSION}/chain/receipt")
-def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=Depends(feature_context)):
+def chain_receipt(
+    req: SettleRequest, request: Request, response: Response, ctx=Depends(feature_context)
+):
     """Return settle plus chain receipt (requires chain)."""
     x_api_key = ctx["api_key"]
     feats = ctx["features"]
@@ -1046,7 +1332,9 @@ def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=
         if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
             raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
         if not feats.diffusion_allowed:
-            raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
+            raise HTTPException(
+                status_code=403, detail="diffusion gating not enabled for this tier"
+            )
     if not req.chain:
         raise HTTPException(status_code=400, detail="chain must be provided")
     lat, N, D, k_eff, eff_params, profile_id = _build_lattice(req, x_api_key)
@@ -1055,7 +1343,9 @@ def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=
     monthly_ctx = _check_monthly_cap(x_api_key, units)
     remaining, limit, reset_at = _check_and_consume_quota(x_api_key, units)
     t0 = time.time()
-    settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+    settle_stats = lat.settle(
+        dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol
+    )
     elapsed = time.time() - t0
     SETTLE_COUNTER.labels(status="ok").inc()
     SETTLE_LATENCY.observe(elapsed)
@@ -1064,7 +1354,22 @@ def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=
     rec = lat.chain_receipt(req.chain)
     # Learning hook (best-effort)
     try:
-        record_observation(x_api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": k_eff}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+        record_observation(
+            x_api_key,
+            profile_id,
+            {
+                "lamG": eff_params["lamG"],
+                "lamC": eff_params["lamC"],
+                "lamQ": eff_params["lamQ"],
+                "kneighbors": k_eff,
+            },
+            {
+                "duration_ms": 1000.0 * elapsed,
+                "iters": int(settle_stats.get("iters", 0)),
+                "residual": float(settle_stats.get("res", 0.0)),
+                "tol": float(req.options.tol),
+            },
+        )
     except Exception:
         pass
     headers = _quota_headers(remaining, limit, reset_at)
@@ -1076,36 +1381,73 @@ def chain_receipt(req: SettleRequest, request: Request, response: Response, ctx=
     for k, v in headers.items():
         response.headers.setdefault(k, v)
     response.headers.setdefault("X-Profile-Id", profile_id)
-    _append_usage({
-        "ts": time.time(),
-        "event": "chain_receipt",
-        "api_key": x_api_key,
-        "N": N,
-        "D": D,
-        "units": units,
-        "duration_ms": 1000.0 * elapsed,
-        "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-        "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}
-    })
+    _append_usage(
+        {
+            "ts": time.time(),
+            "event": "chain_receipt",
+            "api_key": x_api_key,
+            "N": N,
+            "D": D,
+            "units": units,
+            "duration_ms": 1000.0 * elapsed,
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+            "monthly": None
+            if not monthly_ctx
+            else {
+                "limit": monthly_ctx["limit"],
+                "used": monthly_ctx["used"],
+                "remaining": monthly_ctx["remaining"],
+                "period": monthly_ctx["period"],
+            },
+        }
+    )
     return {
         "state_sig": lat._signature(),
         "chain_receipt": rec,
         "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-        "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}} ,
+        "meta": {
+            "N": N,
+            "D": D,
+            "kneighbors_requested": req.params.kneighbors,
+            "kneighbors_effective": k_eff,
+            "profile_id": profile_id,
+            "request_id": request.headers.get(REQUEST_ID_HEADER, ""),
+            "usage": {
+                "nodes": N,
+                "node_dim_units": units,
+                "monthly": None
+                if not monthly_ctx
+                else {
+                    "limit": monthly_ctx["limit"],
+                    "used": monthly_ctx["used"],
+                    "remaining": monthly_ctx["remaining"],
+                    "period": monthly_ctx["period"],
+                },
+            },
+            "quota": None
+            if limit == 0
+            else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+        },
     }
+
 
 @app.get("/metrics")
 def metrics():
     data = generate_latest()  # type: ignore
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
+
 def _new_api_key() -> str:
     # Generate a URL-safe API key (32 bytes -> 43 chars base64url). Prefix for readability.
     try:
         import secrets
+
         return "ok_" + secrets.token_urlsafe(32)
     except Exception:
         return "ok_" + uuid.uuid4().hex
+
 
 # --- CLI signup sessions (device-code style) ---
 # In-memory store mapping a short code to pending/provisioned status. Optional persistence can be added later.
@@ -1115,28 +1457,38 @@ try:
 except ValueError:
     _CLI_TTL_SEC = 900
 
+
 def _new_cli_code() -> str:
     # short, unguessable code for CLI pairing
     try:
         import secrets
+
         return secrets.token_hex(4)  # 8 hex chars
     except Exception:
         return uuid.uuid4().hex[:8]
 
+
 def _purge_cli_sessions():
     now = time.time()
-    expired = [c for c, rec in _CLI_SESSIONS.items() if now - rec.get("created", now) > _CLI_TTL_SEC or rec.get("status") == "claimed"]
+    expired = [
+        c
+        for c, rec in _CLI_SESSIONS.items()
+        if now - rec.get("created", now) > _CLI_TTL_SEC or rec.get("status") == "claimed"
+    ]
     for c in expired:
         _CLI_SESSIONS.pop(c, None)
 
+
 # --- Optional Firestore mapping: api_key -> (stripe_customer_id, subscription_id) ---
 _CUSTOMERS_COLLECTION = os.getenv("OSCILLINK_CUSTOMERS_COLLECTION", "").strip()
+
 
 def _fs_get_customer_mapping(api_key: str):  # pragma: no cover - external dependency
     if not _CUSTOMERS_COLLECTION:
         return None
     try:
         from google.cloud import firestore  # type: ignore
+
         client = firestore.Client()
         snap = client.collection(_CUSTOMERS_COLLECTION).document(api_key).get()
         if snap.exists:
@@ -1145,11 +1497,15 @@ def _fs_get_customer_mapping(api_key: str):  # pragma: no cover - external depen
         return None
     return None
 
-def _fs_set_customer_mapping(api_key: str, customer_id: str | None, subscription_id: str | None):  # pragma: no cover - external dependency
+
+def _fs_set_customer_mapping(
+    api_key: str, customer_id: str | None, subscription_id: str | None
+):  # pragma: no cover - external dependency
     if not _CUSTOMERS_COLLECTION or not api_key or not (customer_id or subscription_id):
         return
     try:
         from google.cloud import firestore  # type: ignore
+
         client = firestore.Client()
         doc_ref = client.collection(_CUSTOMERS_COLLECTION).document(api_key)
         payload = {
@@ -1165,17 +1521,25 @@ def _fs_set_customer_mapping(api_key: str, customer_id: str | None, subscription
         # best-effort only
         pass
 
-def _stripe_fetch_session_and_subscription(session_id: str):  # pragma: no cover - external dependency path
+
+def _stripe_fetch_session_and_subscription(
+    session_id: str,
+):  # pragma: no cover - external dependency path
     stripe_secret = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
     if not stripe_secret:
         raise RuntimeError("stripe secret not configured")
     import stripe  # type: ignore
+
     stripe.api_key = stripe_secret
     stripe.api_version = "2024-06-20"
     session = stripe.checkout.Session.retrieve(session_id, expand=["subscription", "customer"])  # type: ignore
     if not session:
         raise ValueError("session not found")
-    sub = session.get("subscription") if isinstance(session, dict) else getattr(session, "subscription", None)
+    sub = (
+        session.get("subscription")
+        if isinstance(session, dict)
+        else getattr(session, "subscription", None)
+    )
     if isinstance(sub, str):
         sub = stripe.Subscription.retrieve(sub)  # type: ignore
     if not isinstance(sub, dict):
@@ -1185,6 +1549,7 @@ def _stripe_fetch_session_and_subscription(session_id: str):  # pragma: no cover
     if not isinstance(sub, dict):
         raise ValueError("subscription not found for session")
     return session, sub
+
 
 def _send_key_email(to_email: str, api_key: str, tier: str, status: str) -> bool:
     """Best-effort email sender for delivering API keys.
@@ -1237,6 +1602,7 @@ def _send_key_email(to_email: str, api_key: str, tier: str, status: str) -> bool
             return False
     return False
 
+
 def _provision_key_for_subscription(sub: dict) -> tuple[str, str, str]:  # (api_key, tier, status)
     meta = sub.get("metadata", {}) or {}
     api_key = meta.get("api_key") if isinstance(meta, dict) else None
@@ -1248,15 +1614,25 @@ def _provision_key_for_subscription(sub: dict) -> tuple[str, str, str]:  # (api_
         # Best-effort attach to subscription metadata
         try:
             import stripe  # type: ignore
+
             stripe.Subscription.modify(sub.get("id"), metadata={**meta, "api_key": api_key})  # type: ignore
         except Exception:
             pass
     ks = get_keystore()
-    ks.update(api_key, create=True, tier=new_tier, status=status, features={"diffusion_gates": tinfo.diffusion_allowed})
+    ks.update(
+        api_key,
+        create=True,
+        tier=new_tier,
+        status=status,
+        features={"diffusion_gates": tinfo.diffusion_allowed},
+    )
     return api_key, new_tier, status
 
+
 @app.post("/billing/cli/start")
-def billing_cli_start(tier: str = "beta", email: str | None = None):  # pragma: no cover - external dependency path
+def billing_cli_start(
+    tier: str = "beta", email: str | None = None
+):  # pragma: no cover - external dependency path
     """Start a CLI signup session and return a Checkout URL plus a short code.
 
     The user completes checkout in a browser; the server provisions an API key on webhook
@@ -1273,6 +1649,7 @@ def billing_cli_start(tier: str = "beta", email: str | None = None):  # pragma: 
     code = _new_cli_code()
     try:
         import stripe  # type: ignore
+
         stripe.api_key = stripe_secret
         stripe.api_version = "2024-06-20"
         success_url = os.getenv("OSCILLINK_CLI_SUCCESS_URL", "https://oscillink.com/thanks")
@@ -1306,6 +1683,7 @@ def billing_cli_start(tier: str = "beta", email: str | None = None):  # pragma: 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"failed to start CLI session: {e}") from e
 
+
 @app.get("/billing/cli/poll/{code}")
 def billing_cli_poll(code: str):
     """Poll the status of a CLI signup session and return the API key when ready."""
@@ -1319,21 +1697,30 @@ def billing_cli_poll(code: str):
         return {"status": "ready", "api_key": rec.get("api_key"), "tier": rec.get("tier")}
     return {"status": "pending"}
 
+
 @app.get("/billing/success")
 def billing_success(session_id: str | None = None):  # pragma: no cover - external dependency path
     """Stripe Checkout success landing page."""
     if not session_id:
-        return HTMLResponse(status_code=400, content=(
-            "<html><body><h2>Missing session</h2><p>session_id is required. "
-            "If you reached this page from Stripe Checkout, contact support.</p></body></html>"))
+        return HTMLResponse(
+            status_code=400,
+            content=(
+                "<html><body><h2>Missing session</h2><p>session_id is required. "
+                "If you reached this page from Stripe Checkout, contact support.</p></body></html>"
+            ),
+        )
     try:
         _ = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
         if not _:
-            return HTMLResponse(status_code=503, content=(
-                "<html><body><h2>Billing not configured</h2>"
-                "<p>Stripe secret not set on server. Your payment likely succeeded, but we can't "
-                "provision a key automatically. Please email contact@oscillink.com with your receipt.</p>"
-                "</body></html>"))
+            return HTMLResponse(
+                status_code=503,
+                content=(
+                    "<html><body><h2>Billing not configured</h2>"
+                    "<p>Stripe secret not set on server. Your payment likely succeeded, but we can't "
+                    "provision a key automatically. Please email contact@oscillink.com with your receipt.</p>"
+                    "</body></html>"
+                ),
+            )
         session, sub = _stripe_fetch_session_and_subscription(session_id)
         api_key, new_tier, status = _provision_key_for_subscription(sub)
         # Best-effort: persist api_key -> (customer_id, subscription_id) mapping for portal/cancel flows
@@ -1382,13 +1769,22 @@ def billing_success(session_id: str | None = None):  # pragma: no cover - extern
         }
         return HTMLResponse(content=html, headers=headers)
     except ModuleNotFoundError:
-        return HTMLResponse(status_code=501, content=(
-            "<html><body><h2>Stripe library not installed</h2>"
-            "<p>Server cannot retrieve your session. We will email your key shortly.</p></body></html>"))
+        return HTMLResponse(
+            status_code=501,
+            content=(
+                "<html><body><h2>Stripe library not installed</h2>"
+                "<p>Server cannot retrieve your session. We will email your key shortly.</p></body></html>"
+            ),
+        )
     except Exception as e:
-        return HTMLResponse(status_code=400, content=(
-            f"<html><body><h2>Checkout session error</h2><p>{str(e)}</p>"
-            "<p>If this persists, contact support with your receipt.</p></body></html>"))
+        return HTMLResponse(
+            status_code=400,
+            content=(
+                f"<html><body><h2>Checkout session error</h2><p>{str(e)}</p>"
+                "<p>If this persists, contact support with your receipt.</p></body></html>"
+            ),
+        )
+
 
 @app.post("/billing/portal")
 def create_billing_portal(ctx=Depends(feature_context)):
@@ -1408,6 +1804,7 @@ def create_billing_portal(ctx=Depends(feature_context)):
         if not stripe_secret:
             raise HTTPException(status_code=503, detail="billing not configured")
         import stripe  # type: ignore
+
         stripe.api_key = stripe_secret
         stripe.api_version = "2024-06-20"
         return_url = os.getenv("OSCILLINK_PORTAL_RETURN_URL", "https://oscillink.com")
@@ -1423,15 +1820,20 @@ def create_billing_portal(ctx=Depends(feature_context)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"failed to create portal session: {e}") from e
 
+
 @app.post(f"/{_API_VERSION}/jobs/settle")
-def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request, ctx=Depends(feature_context)):
+def submit_job(
+    req: SettleRequest, background: BackgroundTasks, request: Request, ctx=Depends(feature_context)
+):
     x_api_key = ctx["api_key"]
     feats = ctx["features"]
     if req.gates is not None:
         if os.getenv("OSCILLINK_DIFFUSION_GATES_ENABLED", "1") not in {"1", "true", "TRUE", "on"}:
             raise HTTPException(status_code=403, detail="diffusion gating temporarily disabled")
         if not feats.diffusion_allowed:
-            raise HTTPException(status_code=403, detail="diffusion gating not enabled for this tier")
+            raise HTTPException(
+                status_code=403, detail="diffusion gating not enabled for this tier"
+            )
     job_id = uuid.uuid4().hex
     created = time.time()
     _purge_old_jobs()
@@ -1450,10 +1852,17 @@ def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request
                 monthly_ctx = _check_monthly_cap(x_api_key, units)
                 remaining, limit, reset_at = _check_and_consume_quota(x_api_key, units)
             except HTTPException as he:  # record quota error inside job result
-                _jobs[job_id] = {"status": "error", "error": he.detail, "created": created, "quota_error": True}
+                _jobs[job_id] = {
+                    "status": "error",
+                    "error": he.detail,
+                    "created": created,
+                    "quota_error": True,
+                }
                 return
             t0 = time.time()
-            settle_stats = lat.settle(dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol)
+            settle_stats = lat.settle(
+                dt=req.options.dt, max_iters=req.options.max_iters, tol=req.options.tol
+            )
             elapsed = time.time() - t0
             rec = lat.receipt() if req.options.include_receipt else None
             bundle = lat.bundle(k=req.options.bundle_k) if req.options.bundle_k else None
@@ -1468,26 +1877,74 @@ def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request
                     "receipt": rec,
                     "bundle": bundle,
                     "timings_ms": {"total_settle_ms": 1000.0 * elapsed},
-                    "meta": {"N": N, "D": D, "kneighbors_requested": req.params.kneighbors, "kneighbors_effective": k_eff, "profile_id": profile_id, "request_id": request.headers.get(REQUEST_ID_HEADER, ""), "usage": {"nodes": N, "node_dim_units": units, "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}}, "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)}}
-                }
+                    "meta": {
+                        "N": N,
+                        "D": D,
+                        "kneighbors_requested": req.params.kneighbors,
+                        "kneighbors_effective": k_eff,
+                        "profile_id": profile_id,
+                        "request_id": request.headers.get(REQUEST_ID_HEADER, ""),
+                        "usage": {
+                            "nodes": N,
+                            "node_dim_units": units,
+                            "monthly": None
+                            if not monthly_ctx
+                            else {
+                                "limit": monthly_ctx["limit"],
+                                "used": monthly_ctx["used"],
+                                "remaining": monthly_ctx["remaining"],
+                                "period": monthly_ctx["period"],
+                            },
+                        },
+                        "quota": None
+                        if limit == 0
+                        else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+                    },
+                },
             }
             # Learning hook (best-effort)
             try:
-                record_observation(x_api_key, profile_id, {"lamG": eff_params["lamG"], "lamC": eff_params["lamC"], "lamQ": eff_params["lamQ"], "kneighbors": k_eff}, {"duration_ms": 1000.0 * elapsed, "iters": int(settle_stats.get("iters", 0)), "residual": float(settle_stats.get("res", 0.0)), "tol": float(req.options.tol)})
+                record_observation(
+                    x_api_key,
+                    profile_id,
+                    {
+                        "lamG": eff_params["lamG"],
+                        "lamC": eff_params["lamC"],
+                        "lamQ": eff_params["lamQ"],
+                        "kneighbors": k_eff,
+                    },
+                    {
+                        "duration_ms": 1000.0 * elapsed,
+                        "iters": int(settle_stats.get("iters", 0)),
+                        "residual": float(settle_stats.get("res", 0.0)),
+                        "tol": float(req.options.tol),
+                    },
+                )
             except Exception:
                 pass
-            _append_usage({
-                "ts": time.time(),
-                "event": "job_settle",
-                "api_key": x_api_key,
-                "job_id": job_id,
-                "N": N,
-                "D": D,
-                "units": units,
-                "duration_ms": 1000.0 * elapsed,
-                "quota": None if limit==0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-                "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]}
-            })
+            _append_usage(
+                {
+                    "ts": time.time(),
+                    "event": "job_settle",
+                    "api_key": x_api_key,
+                    "job_id": job_id,
+                    "N": N,
+                    "D": D,
+                    "units": units,
+                    "duration_ms": 1000.0 * elapsed,
+                    "quota": None
+                    if limit == 0
+                    else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+                    "monthly": None
+                    if not monthly_ctx
+                    else {
+                        "limit": monthly_ctx["limit"],
+                        "used": monthly_ctx["used"],
+                        "remaining": monthly_ctx["remaining"],
+                        "period": monthly_ctx["period"],
+                    },
+                }
+            )
         except Exception as e:
             _jobs[job_id] = {"status": "error", "error": str(e), "created": created}
         try:
@@ -1498,12 +1955,14 @@ def submit_job(req: SettleRequest, background: BackgroundTasks, request: Request
     background.add_task(run_job)
     return {"job_id": job_id, "status": "queued"}
 
+
 @app.get(f"/{_API_VERSION}/jobs/{{job_id}}")
 def get_job(job_id: str, ctx=Depends(feature_context)):
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
     return job
+
 
 @app.delete(f"/{_API_VERSION}/jobs/{{job_id}}")
 def cancel_job(job_id: str, ctx=Depends(feature_context)):
@@ -1520,7 +1979,9 @@ def cancel_job(job_id: str, ctx=Depends(feature_context)):
         pass
     return {"job_id": job_id, "status": "cancelled"}
 
+
 # ---------------- Admin Key Management -----------------
+
 
 def _admin_guard(x_admin_secret: str | None = Header(default=None)):
     required = os.getenv("OSCILLINK_ADMIN_SECRET")
@@ -1529,6 +1990,7 @@ def _admin_guard(x_admin_secret: str | None = Header(default=None)):
     if x_admin_secret != required:
         raise HTTPException(status_code=401, detail="invalid admin secret")
     return True
+
 
 @app.get("/admin/keys/{api_key}", response_model=AdminKeyResponse)
 def admin_get_key(api_key: str, auth=Depends(_admin_guard)):
@@ -1547,11 +2009,16 @@ def admin_get_key(api_key: str, auth=Depends(_admin_guard)):
         updated_at=meta.updated_at,
     )
 
+
 @app.put("/admin/keys/{api_key}", response_model=AdminKeyResponse)
 def admin_put_key(api_key: str, payload: AdminKeyUpdate, auth=Depends(_admin_guard)):
     ks = get_keystore()
     # Pydantic v2 prefers model_dump; maintain compatibility with v1
-    fields = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True)
+    fields = (
+        payload.model_dump(exclude_unset=True)
+        if hasattr(payload, "model_dump")
+        else payload.dict(exclude_unset=True)
+    )
     # Support creation if absent
     meta = ks.update(api_key, create=True, **fields)
     if not meta:
@@ -1567,18 +2034,20 @@ def admin_put_key(api_key: str, payload: AdminKeyUpdate, auth=Depends(_admin_gua
         updated_at=meta.updated_at,
     )
 
+
 @app.get("/admin/webhook/events")
 def admin_list_webhook_events(limit: int = 50, auth=Depends(_admin_guard)):
-        """Return recent webhook events (memory-backed; Firestore persistence optional).
+    """Return recent webhook events (memory-backed; Firestore persistence optional).
 
-        Parameters:
-            limit: max number of events to return (most recent first). Clamped to 500.
-        """
-        lim = max(1, min(limit, 500))
-        # In-memory events dict keyed by id; sort by ts descending.
-        events = list(_webhook_events_mem.values())
-        events.sort(key=lambda r: r.get("ts", 0), reverse=True)
-        return {"events": events[:lim], "count": len(events), "returned": len(events[:lim])}
+    Parameters:
+        limit: max number of events to return (most recent first). Clamped to 500.
+    """
+    lim = max(1, min(limit, 500))
+    # In-memory events dict keyed by id; sort by ts descending.
+    events = list(_webhook_events_mem.values())
+    events.sort(key=lambda r: r.get("ts", 0), reverse=True)
+    return {"events": events[:lim], "count": len(events), "returned": len(events[:lim])}
+
 
 @app.get("/admin/billing/price-map")
 def admin_get_price_map(auth=Depends(_admin_guard)):
@@ -1598,6 +2067,7 @@ def admin_get_price_map(auth=Depends(_admin_guard)):
         for name, info in TIER_CATALOG.items()
     }
     return {"price_map": pmap, "tiers": tiers}
+
 
 @app.get("/admin/usage/{api_key}")
 def admin_get_usage(api_key: str, auth=Depends(_admin_guard)):
@@ -1634,8 +2104,11 @@ def admin_get_usage(api_key: str, auth=Depends(_admin_guard)):
         }
     return {"api_key": api_key, "quota": quota, "monthly": monthly}
 
+
 @app.post("/admin/billing/cancel/{api_key}")
-def admin_cancel_subscription(api_key: str, immediate: bool | None = None, auth=Depends(_admin_guard)):
+def admin_cancel_subscription(
+    api_key: str, immediate: bool | None = None, auth=Depends(_admin_guard)
+):
     """Cancel a customer's subscription for the given API key (admin only).
 
     If immediate is True, the subscription is cancelled immediately; otherwise it will cancel at period end.
@@ -1649,10 +2122,17 @@ def admin_cancel_subscription(api_key: str, immediate: bool | None = None, auth=
         if not stripe_secret:
             raise HTTPException(status_code=503, detail="billing not configured")
         import stripe  # type: ignore
+
         stripe.api_key = stripe_secret
         stripe.api_version = "2024-06-20"
         sub_id = mapping["subscription_id"]
-        do_immediate = bool(immediate) if immediate is not None else (os.getenv("OSCILLINK_STRIPE_CANCEL_IMMEDIATE", "0") in {"1","true","TRUE","on"})
+        do_immediate = (
+            bool(immediate)
+            if immediate is not None
+            else (
+                os.getenv("OSCILLINK_STRIPE_CANCEL_IMMEDIATE", "0") in {"1", "true", "TRUE", "on"}
+            )
+        )
         if do_immediate:
             stripe.Subscription.delete(sub_id)  # type: ignore
             status = "cancelled"
@@ -1670,6 +2150,7 @@ def admin_cancel_subscription(api_key: str, immediate: bool | None = None, auth=
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"failed to cancel subscription: {e}") from e
 
+
 # Stripe webhook with subscription → tier sync
 @app.post("/stripe/webhook")
 async def stripe_webhook(request: Request):  # noqa: C901
@@ -1682,11 +2163,18 @@ async def stripe_webhook(request: Request):  # noqa: C901
     body = await request.body()
     payload_text = body.decode("utf-8", errors="replace")
     event = None
-    allow_unverified = os.getenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "0") in {"1", "true", "TRUE", "on"}
+    allow_unverified = os.getenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "0") in {
+        "1",
+        "true",
+        "TRUE",
+        "on",
+    }
     if allow_unverified:
         try:
             # Best-effort server-side warning to avoid production misconfiguration
-            print("[warn] OSCILLINK_ALLOW_UNVERIFIED_STRIPE is enabled — webhook signature verification may be bypassed. Do NOT enable in production.")
+            print(
+                "[warn] OSCILLINK_ALLOW_UNVERIFIED_STRIPE is enabled — webhook signature verification may be bypassed. Do NOT enable in production."
+            )
         except Exception:
             pass
     verified = False
@@ -1709,9 +2197,11 @@ async def stripe_webhook(request: Request):  # noqa: C901
         if max_age > 0 and sig_header:
             # stripe-signature format: t=timestamp,v1=...,v0=...
             try:
-                parts = {kv.split('=')[0]: kv.split('=')[1] for kv in sig_header.split(',') if '=' in kv}
-                if 't' in parts:
-                    ts = int(parts['t'])
+                parts = {
+                    kv.split("=")[0]: kv.split("=")[1] for kv in sig_header.split(",") if "=" in kv
+                }
+                if "t" in parts:
+                    ts = int(parts["t"])
                     now = int(time.time())
                     if now - ts > max_age:
                         # Allow explicit unverified override pathway to bypass freshness (test/dev only)
@@ -1735,6 +2225,7 @@ async def stripe_webhook(request: Request):  # noqa: C901
             # Attempt real verification if stripe package available
             try:  # pragma: no cover - external dependency path
                 import stripe  # type: ignore
+
                 stripe.api_version = "2024-06-20"
                 event = stripe.Webhook.construct_event(payload_text, sig_header, secret)
                 verified = True
@@ -1743,24 +2234,37 @@ async def stripe_webhook(request: Request):  # noqa: C901
                 try:
                     event = json.loads(payload_text)
                 except Exception as err:
-                    raise HTTPException(status_code=400, detail="invalid JSON payload (no stripe lib)") from err
+                    raise HTTPException(
+                        status_code=400, detail="invalid JSON payload (no stripe lib)"
+                    ) from err
             except Exception as e:  # signature failure
                 # If verification fails but override is allowed, proceed unverified
-                if os.getenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "0") in {"1","true","TRUE","on"}:
+                if os.getenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "0") in {
+                    "1",
+                    "true",
+                    "TRUE",
+                    "on",
+                }:
                     try:
                         event = json.loads(payload_text)
                         verified = False
                     except Exception as err:
                         raise HTTPException(status_code=400, detail="invalid JSON payload") from err
                 else:
-                    raise HTTPException(status_code=400, detail=f"signature verification failed: {e}") from e
+                    raise HTTPException(
+                        status_code=400, detail=f"signature verification failed: {e}"
+                    ) from e
     else:
         try:
             event = json.loads(payload_text)
         except Exception as err:
             raise HTTPException(status_code=400, detail="invalid JSON payload") from err
 
-    etype = event.get("type", "unknown") if isinstance(event, dict) else getattr(event, "type", "unknown")
+    etype = (
+        event.get("type", "unknown")
+        if isinstance(event, dict)
+        else getattr(event, "type", "unknown")
+    )
     event_id = event.get("id") if isinstance(event, dict) else getattr(event, "id", None)
     if not event_id:
         # Without an id we cannot ensure idempotency
@@ -1773,7 +2277,14 @@ async def stripe_webhook(request: Request):  # noqa: C901
             STRIPE_WEBHOOK_EVENTS.labels(result="duplicate").inc()  # type: ignore
         except Exception:
             pass
-        return {"received": True, "id": event_id, "type": etype, "processed": False, "duplicate": True, "note": "duplicate ignored"}
+        return {
+            "received": True,
+            "id": event_id,
+            "type": etype,
+            "processed": False,
+            "duplicate": True,
+            "note": "duplicate ignored",
+        }
 
     processed = False
     note = None
@@ -1796,8 +2307,18 @@ async def stripe_webhook(request: Request):  # noqa: C901
                 if etype in {"customer.subscription.created", "customer.subscription.updated"}:
                     new_tier = resolve_tier_from_subscription(sub_obj)
                     tinfo = tier_info(new_tier)
-                    status = "pending" if getattr(tinfo, "requires_manual_activation", False) else "active"
-                    ks.update(api_key, create=True, tier=new_tier, status=status, features={"diffusion_gates": tinfo.diffusion_allowed})
+                    status = (
+                        "pending"
+                        if getattr(tinfo, "requires_manual_activation", False)
+                        else "active"
+                    )
+                    ks.update(
+                        api_key,
+                        create=True,
+                        tier=new_tier,
+                        status=status,
+                        features={"diffusion_gates": tinfo.diffusion_allowed},
+                    )
                     processed = True
                     note = f"tier set to {new_tier} (status={status})"
                 elif etype in {"customer.subscription.deleted", "customer.subscription.cancelled"}:
@@ -1811,9 +2332,8 @@ async def stripe_webhook(request: Request):  # noqa: C901
         sess_obj = event.get("data", {}).get("object", {}) if isinstance(event, dict) else {}
         email = None
         try:
-            email = (
-                (sess_obj.get("customer_details", {}) or {}).get("email")
-                or sess_obj.get("customer_email")
+            email = (sess_obj.get("customer_details", {}) or {}).get("email") or sess_obj.get(
+                "customer_email"
             )
         except Exception:
             email = None
@@ -1825,6 +2345,7 @@ async def stripe_webhook(request: Request):  # noqa: C901
         else:
             try:  # pragma: no cover - external dependency path
                 import stripe  # type: ignore
+
                 stripe.api_key = stripe_secret
                 stripe.api_version = "2024-06-20"
                 sid = sess_obj.get("id") or None
@@ -1840,11 +2361,24 @@ async def stripe_webhook(request: Request):  # noqa: C901
                     pass
                 # If this checkout was initiated via CLI, fulfill the CLI session
                 try:
-                    cli_code = (session.get("client_reference_id") if isinstance(session, dict) else None) or ((session.get("metadata") or {}).get("cli_code") if isinstance(session, dict) else None)
+                    cli_code = (
+                        session.get("client_reference_id") if isinstance(session, dict) else None
+                    ) or (
+                        (session.get("metadata") or {}).get("cli_code")
+                        if isinstance(session, dict)
+                        else None
+                    )
                 except Exception:
                     cli_code = None
                 if cli_code and cli_code in _CLI_SESSIONS:
-                    _CLI_SESSIONS[cli_code].update({"status": "provisioned", "api_key": api_key, "tier": new_tier, "updated": time.time()})
+                    _CLI_SESSIONS[cli_code].update(
+                        {
+                            "status": "provisioned",
+                            "api_key": api_key,
+                            "tier": new_tier,
+                            "updated": time.time(),
+                        }
+                    )
                 if email:
                     _send_key_email(email, api_key, new_tier, status)
                 processed = True
@@ -1862,9 +2396,9 @@ async def stripe_webhook(request: Request):  # noqa: C901
         "live": bool(secret),
         "verified": verified,
         "allow_unverified_override": allow_unverified,
-        "api_key": api_key if 'api_key' in locals() else None,
+        "api_key": api_key if "api_key" in locals() else None,
         # integrity hash of raw payload (without storing full body) for audit correlation
-        "payload_sha256": hashlib.sha256(payload_text.encode('utf-8')).hexdigest(),
+        "payload_sha256": hashlib.sha256(payload_text.encode("utf-8")).hexdigest(),
         "freshness_max_age": os.getenv("OSCILLINK_STRIPE_MAX_AGE", "300"),
     }
     # Attempt to persist event (fire-and-forget)
@@ -1874,6 +2408,7 @@ async def stripe_webhook(request: Request):  # noqa: C901
     except Exception:
         pass
     return record
+
 
 # CLI entrypoint for uvicorn
 # uvicorn cloud.app.main:app --reload --port 8000

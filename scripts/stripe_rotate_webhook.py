@@ -9,6 +9,7 @@ Notes:
 - The new signing secret will be printed to stdout exactly once; capture and store it
   in your deployment environment immediately.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,14 +35,25 @@ DEFAULT_EVENTS: List[str] = [
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", required=True, help="Webhook endpoint URL (must be publicly reachable)")
-    ap.add_argument("--api-key", default=None, help="Stripe secret key (fallback to STRIPE_API_KEY/STRIPE_SECRET_KEY env)")
-    ap.add_argument("--events", nargs="*", default=None, help="Override enabled events (space-separated)")
+    ap.add_argument(
+        "--url", required=True, help="Webhook endpoint URL (must be publicly reachable)"
+    )
+    ap.add_argument(
+        "--api-key",
+        default=None,
+        help="Stripe secret key (fallback to STRIPE_API_KEY/STRIPE_SECRET_KEY env)",
+    )
+    ap.add_argument(
+        "--events", nargs="*", default=None, help="Override enabled events (space-separated)"
+    )
     args = ap.parse_args()
 
     api_key = args.api_key or os.getenv("STRIPE_API_KEY") or os.getenv("STRIPE_SECRET_KEY")
     if not api_key:
-        print("STRIPE_API_KEY or STRIPE_SECRET_KEY is required (pass --api-key or set env)", file=sys.stderr)
+        print(
+            "STRIPE_API_KEY or STRIPE_SECRET_KEY is required (pass --api-key or set env)",
+            file=sys.stderr,
+        )
         return 2
 
     stripe.api_key = api_key

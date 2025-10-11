@@ -9,6 +9,7 @@ If products/prices already exist (matched by metadata.tier) it reuses them.
 You can also run in dry mode to just print the existing mapping:
   python scripts/stripe_setup.py --print
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,10 +28,29 @@ stripe.api_version = "2024-06-20"
 
 BASE_TIERS = [
     {"name": "Oscillink Free", "tier": "free", "amount": 0, "interval": "month", "currency": "usd"},
-    {"name": "Oscillink Beta", "tier": "beta", "amount": 1900, "interval": "month", "currency": "usd"},
-    {"name": "Oscillink Enterprise", "tier": "enterprise", "amount": 0, "interval": "month", "currency": "usd", "custom": True},
+    {
+        "name": "Oscillink Beta",
+        "tier": "beta",
+        "amount": 1900,
+        "interval": "month",
+        "currency": "usd",
+    },
+    {
+        "name": "Oscillink Enterprise",
+        "tier": "enterprise",
+        "amount": 0,
+        "interval": "month",
+        "currency": "usd",
+        "custom": True,
+    },
 ]
-PRO_TIER = {"name": "Oscillink Pro", "tier": "pro", "amount": 4900, "interval": "month", "currency": "usd"}
+PRO_TIER = {
+    "name": "Oscillink Pro",
+    "tier": "pro",
+    "amount": 4900,
+    "interval": "month",
+    "currency": "usd",
+}
 
 
 def ensure_products_and_prices(include_pro: bool = False) -> Dict[str, str]:  # noqa: C901
@@ -50,7 +70,9 @@ def ensure_products_and_prices(include_pro: bool = False) -> Dict[str, str]:  # 
                 product_id = p.id
                 break
         if not product_id:
-            product = stripe.Product.create(name=spec["name"], metadata={"tier": tier, "oscillink": "1"})
+            product = stripe.Product.create(
+                name=spec["name"], metadata={"tier": tier, "oscillink": "1"}
+            )
             product_id = product.id
         # Enterprise may be custom pricing; skip creating price amount 0 recurring for real live mode
         if spec.get("custom"):
@@ -62,18 +84,34 @@ def ensure_products_and_prices(include_pro: bool = False) -> Dict[str, str]:  # 
                     placeholder = pr
                     break
             if not placeholder:
-                placeholder = stripe.Price.create(product=product_id, unit_amount=0, currency=spec["currency"], recurring={"interval": spec["interval"]}, metadata={"tier": tier})
+                placeholder = stripe.Price.create(
+                    product=product_id,
+                    unit_amount=0,
+                    currency=spec["currency"],
+                    recurring={"interval": spec["interval"]},
+                    metadata={"tier": tier},
+                )
             price_map[placeholder.id] = tier
             continue
         # Find or create price
         prices = stripe.Price.list(product=product_id, limit=10)
         price_id = None
         for pr in prices.auto_paging_iter():  # type: ignore
-            if pr.recurring and pr.recurring.get("interval") == spec["interval"] and pr.unit_amount == spec["amount"]:
+            if (
+                pr.recurring
+                and pr.recurring.get("interval") == spec["interval"]
+                and pr.unit_amount == spec["amount"]
+            ):
                 price_id = pr.id
                 break
         if not price_id:
-            price = stripe.Price.create(product=product_id, unit_amount=spec["amount"], currency=spec["currency"], recurring={"interval": spec["interval"]}, metadata={"tier": tier})
+            price = stripe.Price.create(
+                product=product_id,
+                unit_amount=spec["amount"],
+                currency=spec["currency"],
+                recurring={"interval": spec["interval"]},
+                metadata={"tier": tier},
+            )
             price_id = price.id
         price_map[price_id] = tier
     return price_map
@@ -83,14 +121,23 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--create", action="store_true", help="Create/reuse products and prices")
     ap.add_argument("--output", type=str, default=None, help="Path to write price map JSON")
-    ap.add_argument("--print", action="store_true", help="Print existing mapping from created products/prices")
+    ap.add_argument(
+        "--print", action="store_true", help="Print existing mapping from created products/prices"
+    )
     ap.add_argument("--api-key", type=str, default=None, help="Stripe secret key (overrides env)")
-    ap.add_argument("--include-pro", action="store_true", help="Include Pro tier (hidden by default during beta)")
+    ap.add_argument(
+        "--include-pro",
+        action="store_true",
+        help="Include Pro tier (hidden by default during beta)",
+    )
     args = ap.parse_args()
 
     api_key = args.api_key or os.getenv("STRIPE_API_KEY") or os.getenv("STRIPE_SECRET_KEY")
     if not api_key:
-        print("STRIPE_API_KEY or STRIPE_SECRET_KEY env var required (or pass --api-key)", file=sys.stderr)
+        print(
+            "STRIPE_API_KEY or STRIPE_SECRET_KEY env var required (or pass --api-key)",
+            file=sys.stderr,
+        )
         sys.exit(2)
     stripe.api_key = api_key
 
@@ -116,7 +163,12 @@ def main():
             json.dump(mapping, f, indent=2)
         print(f"Wrote price map to {args.output}")
     print("Set OSCILLINK_STRIPE_PRICE_MAP to either this JSON or a semicolon list, e.g.:")
-    print("OSCILLINK_STRIPE_PRICE_MAP=\"" + ";".join(f"{pid}:{tier}" for pid, tier in mapping.items()) + "\"")
+    print(
+        'OSCILLINK_STRIPE_PRICE_MAP="'
+        + ";".join(f"{pid}:{tier}" for pid, tier in mapping.items())
+        + '"'
+    )
+
 
 if __name__ == "__main__":  # pragma: no cover
     main()

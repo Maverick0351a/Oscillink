@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
 import numpy as np
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from oscillink.adapters.text import embed_texts
@@ -12,6 +12,7 @@ from oscillink.core.lattice import OscillinkLattice
 from oscillink.preprocess.autocorrect import smart_correct
 
 from .config import get_settings
+
 # Note: no direct imports from keystore/features here to avoid unused warnings; we resolve via .main helpers
 
 
@@ -39,14 +40,16 @@ class CompetitorBenchPayload(BaseModel):
 def _cosine_topk(psi: np.ndarray, Y: np.ndarray, k: int, exclude_idx: Optional[int]) -> List[int]:
     Yn = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-9)
     pn = psi / (np.linalg.norm(psi) + 1e-9)
-    scores = (Yn @ pn)
+    scores = Yn @ pn
     if exclude_idx is not None and 0 <= exclude_idx < len(scores):
         scores[exclude_idx] = -1e9
     idx = np.argsort(-scores)[:k]
     return idx.tolist()
 
 
-def _eval_topk(pred: List[int], labels: Optional[List[int]], traps: Optional[List[int]], k: int) -> Tuple[Optional[float], Optional[bool]]:
+def _eval_topk(
+    pred: List[int], labels: Optional[List[int]], traps: Optional[List[int]], k: int
+) -> Tuple[Optional[float], Optional[bool]]:
     if labels is None:
         if traps is None:
             return None, None
@@ -65,9 +68,12 @@ def _eval_topk(pred: List[int], labels: Optional[List[int]], traps: Optional[Lis
     return f1, hall
 
 
-def _run_faiss(psi: np.ndarray, Y: np.ndarray, k: int, q_idx: Optional[int]) -> Tuple[Optional[List[int]], Optional[float]]:
+def _run_faiss(
+    psi: np.ndarray, Y: np.ndarray, k: int, q_idx: Optional[int]
+) -> Tuple[Optional[List[int]], Optional[float]]:
     try:
         import faiss  # type: ignore
+
         Yn = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-9)
         pn = psi / (np.linalg.norm(psi) + 1e-9)
         index = faiss.IndexFlatIP(Y.shape[1])
@@ -83,9 +89,12 @@ def _run_faiss(psi: np.ndarray, Y: np.ndarray, k: int, q_idx: Optional[int]) -> 
         return None, None
 
 
-def _run_annoy(psi: np.ndarray, Y: np.ndarray, k: int, q_idx: Optional[int]) -> Tuple[Optional[List[int]], Optional[float]]:
+def _run_annoy(
+    psi: np.ndarray, Y: np.ndarray, k: int, q_idx: Optional[int]
+) -> Tuple[Optional[List[int]], Optional[float]]:
     try:
         from annoy import AnnoyIndex  # type: ignore
+
         dim = int(Y.shape[1])
         t = AnnoyIndex(dim, metric="angular")
         for i, v in enumerate(Y.tolist()):
@@ -104,13 +113,16 @@ def _run_annoy(psi: np.ndarray, Y: np.ndarray, k: int, q_idx: Optional[int]) -> 
 def feature_context(x_api_key: str | None = Depends(lambda x_api_key=None: x_api_key)):
     # Reuse existing feature resolution from main via keystore metadata
     from . import main as _main  # type: ignore
+
     ks = _main.get_keystore()
     meta = ks.get(x_api_key) if x_api_key else None
     feats = _main.resolve_features(meta)
     return {"api_key": x_api_key, "features": feats}
 
 
-def _select_query(texts: List[str], query: Optional[str], query_index: Optional[int]) -> Tuple[str, Optional[int]]:
+def _select_query(
+    texts: List[str], query: Optional[str], query_index: Optional[int]
+) -> Tuple[str, Optional[int]]:
     if query is not None:
         return query, None
     if query_index is not None and 0 <= query_index < len(texts):
@@ -118,7 +130,9 @@ def _select_query(texts: List[str], query: Optional[str], query_index: Optional[
     return texts[0], 0 if texts else None
 
 
-def _run_oscillink(Y: np.ndarray, psi: np.ndarray, k: int, k_eff: int, params: Dict[str, Any]) -> Tuple[List[int], float]:
+def _run_oscillink(
+    Y: np.ndarray, psi: np.ndarray, k: int, k_eff: int, params: Dict[str, Any]
+) -> Tuple[List[int], float]:
     k_lat = min(int(params.get("kneighbors", k_eff)), max(1, int(Y.shape[0]) - 1))
     t1 = time.time()
     lat = OscillinkLattice(
@@ -135,13 +149,29 @@ def _run_oscillink(Y: np.ndarray, psi: np.ndarray, k: int, k_eff: int, params: D
     return pred, 1000.0 * (time.time() - t1)
 
 
-def _tune_params(Y: np.ndarray, psi: np.ndarray, k: int, k_eff: int, base: Dict[str, Any], labels: Optional[List[int]], traps: Optional[List[int]], trials: int) -> Dict[str, Any]:
+def _tune_params(
+    Y: np.ndarray,
+    psi: np.ndarray,
+    k: int,
+    k_eff: int,
+    base: Dict[str, Any],
+    labels: Optional[List[int]],
+    traps: Optional[List[int]],
+    trials: int,
+) -> Dict[str, Any]:
     if labels is None:
         return {**base, "kneighbors": k_eff}
     lamC_grid = [max(0.1, float(base.get("lamC", 0.5)) * s) for s in [0.6, 1.0, 1.4]]
     lamQ_grid = [max(0.5, float(base.get("lamQ", 4.0)) * s) for s in [0.5, 1.0, 1.5]]
-    k_grid = sorted(set([max(1, min(int(Y.shape[0]) - 1, kk)) for kk in [k_eff - 2, k_eff, k_eff + 2]]))
-    best = {"lamG": float(base.get("lamG", 1.0)), "lamC": float(base.get("lamC", 0.5)), "lamQ": float(base.get("lamQ", 4.0)), "kneighbors": k_eff}
+    k_grid = sorted(
+        set([max(1, min(int(Y.shape[0]) - 1, kk)) for kk in [k_eff - 2, k_eff, k_eff + 2]])
+    )
+    best = {
+        "lamG": float(base.get("lamG", 1.0)),
+        "lamC": float(base.get("lamC", 0.5)),
+        "lamQ": float(base.get("lamQ", 4.0)),
+        "kneighbors": k_eff,
+    }
     best_f1 = -1.0
     rng = np.random.default_rng(42)
     for lc in lamC_grid:
@@ -149,9 +179,16 @@ def _tune_params(Y: np.ndarray, psi: np.ndarray, k: int, k_eff: int, base: Dict[
             for kk in k_grid:
                 f1s: List[float] = []
                 for _ in range(max(1, int(trials))):
-                    jitter = (rng.standard_normal(psi.shape).astype(np.float32) * 0.01)
+                    jitter = rng.standard_normal(psi.shape).astype(np.float32) * 0.01
                     psi_t = (psi + jitter) / (np.linalg.norm(psi + jitter) + 1e-9)
-                    lat_t = OscillinkLattice(Y, kneighbors=kk, lamG=float(base.get("lamG", 1.0)), lamC=lc, lamQ=lq, deterministic_k=True)
+                    lat_t = OscillinkLattice(
+                        Y,
+                        kneighbors=kk,
+                        lamG=float(base.get("lamG", 1.0)),
+                        lamC=lc,
+                        lamQ=lq,
+                        deterministic_k=True,
+                    )
                     lat_t.set_query(psi_t)
                     lat_t.settle(max_iters=12, tol=1e-3)
                     pred_t = [int(item.get("id", -1)) for item in lat_t.bundle(k=k)]
@@ -161,12 +198,22 @@ def _tune_params(Y: np.ndarray, psi: np.ndarray, k: int, k_eff: int, base: Dict[
                 mean_f1 = float(np.mean(f1s)) if f1s else -1.0
                 if mean_f1 > best_f1:
                     best_f1 = mean_f1
-                    best = {"lamG": float(base.get("lamG", 1.0)), "lamC": lc, "lamQ": lq, "kneighbors": kk}
+                    best = {
+                        "lamG": float(base.get("lamG", 1.0)),
+                        "lamC": lc,
+                        "lamQ": lq,
+                        "kneighbors": kk,
+                    }
     return best
 
 
 @router.post(f"/{_API_VERSION}/bench/competitor")
-def competitor_benchmark(payload: CompetitorBenchPayload, request: Request, response: Response, ctx=Depends(feature_context)):
+def competitor_benchmark(
+    payload: CompetitorBenchPayload,
+    request: Request,
+    response: Response,
+    ctx=Depends(feature_context),
+):
     # Resolve fields
     texts = payload.texts or []
     if not texts:
@@ -188,6 +235,7 @@ def competitor_benchmark(payload: CompetitorBenchPayload, request: Request, resp
 
     # Quota/Monthly usage enforcement using main helpers (late import to avoid cycles)
     from . import main as _main  # type: ignore
+
     x_api_key = ctx.get("api_key")
     units = N * D
     monthly_ctx = _main._check_monthly_cap(x_api_key, units)
@@ -201,12 +249,18 @@ def competitor_benchmark(payload: CompetitorBenchPayload, request: Request, resp
 
     # Oscillink default
     k_eff = min(payload.kneighbors, max(1, N - 1))
-    pred_lat_def, lat_def_ms = _run_oscillink(Y, psi, payload.k, k_eff, {"lamG": 1.0, "lamC": 0.5, "lamQ": 4.0, "kneighbors": k_eff})
+    pred_lat_def, lat_def_ms = _run_oscillink(
+        Y, psi, payload.k, k_eff, {"lamG": 1.0, "lamC": 0.5, "lamQ": 4.0, "kneighbors": k_eff}
+    )
     f1_lat_def, hall_lat_def = _eval_topk(pred_lat_def, labels, traps, payload.k)
 
     # Optional tiny tuning (if labels provided)
     base_params = {"lamG": payload.lamG, "lamC": payload.lamC, "lamQ": payload.lamQ}
-    best_params = _tune_params(Y, psi, payload.k, k_eff, base_params, labels, traps, payload.tune_trials) if (payload.tune and labels is not None) else {**base_params, "kneighbors": k_eff}
+    best_params = (
+        _tune_params(Y, psi, payload.k, k_eff, base_params, labels, traps, payload.tune_trials)
+        if (payload.tune and labels is not None)
+        else {**base_params, "kneighbors": k_eff}
+    )
 
     pred_lat_tuned, lat_tuned_ms = _run_oscillink(Y, psi, payload.k, k_eff, best_params)
     f1_lat_tuned, hall_lat_tuned = _eval_topk(pred_lat_tuned, labels, traps, payload.k)
@@ -233,13 +287,21 @@ def competitor_benchmark(payload: CompetitorBenchPayload, request: Request, resp
         "cosine_f1": None if f1_cos is None else float(f1_cos),
         "oscillink_default_f1": None if f1_lat_def is None else float(f1_lat_def),
         "oscillink_tuned_f1": None if f1_lat_tuned is None else float(f1_lat_tuned),
-        "faiss_f1": None if (pred_faiss is None or labels is None) else float((_eval_topk(pred_faiss, labels, traps, payload.k)[0]) or 0.0),
-        "annoy_f1": None if (pred_annoy is None or labels is None) else float((_eval_topk(pred_annoy, labels, traps, payload.k)[0]) or 0.0),
+        "faiss_f1": None
+        if (pred_faiss is None or labels is None)
+        else float((_eval_topk(pred_faiss, labels, traps, payload.k)[0]) or 0.0),
+        "annoy_f1": None
+        if (pred_annoy is None or labels is None)
+        else float((_eval_topk(pred_annoy, labels, traps, payload.k)[0]) or 0.0),
         "cosine_hallucination": None if hall_cos is None else bool(hall_cos),
         "oscillink_default_hallucination": None if hall_lat_def is None else bool(hall_lat_def),
         "oscillink_tuned_hallucination": None if hall_lat_tuned is None else bool(hall_lat_tuned),
-    "faiss_hallucination": None if (pred_faiss is None or traps is None) else bool(_eval_topk(pred_faiss, labels, traps, payload.k)[1]),
-    "annoy_hallucination": None if (pred_annoy is None or traps is None) else bool(_eval_topk(pred_annoy, labels, traps, payload.k)[1]),
+        "faiss_hallucination": None
+        if (pred_faiss is None or traps is None)
+        else bool(_eval_topk(pred_faiss, labels, traps, payload.k)[1]),
+        "annoy_hallucination": None
+        if (pred_annoy is None or traps is None)
+        else bool(_eval_topk(pred_annoy, labels, traps, payload.k)[1]),
         "cosine_topk": _ids_from_idx(pred_cos),
         "oscillink_default_topk": _ids_from_idx(pred_lat_def),
         "oscillink_tuned_topk": _ids_from_idx(pred_lat_tuned),
@@ -250,6 +312,7 @@ def competitor_benchmark(payload: CompetitorBenchPayload, request: Request, resp
     # Metrics and headers
     try:
         from . import main as _main  # type: ignore
+
         _main.USAGE_NODES.inc(N)
         _main.USAGE_NODE_DIM_UNITS.inc(N * D)
         headers = _main._quota_headers(remaining, limit, reset_at)
@@ -262,17 +325,28 @@ def competitor_benchmark(payload: CompetitorBenchPayload, request: Request, resp
             response.headers.setdefault("X-Monthly-Remaining", str(monthly_ctx["remaining"]))
             response.headers.setdefault("X-Monthly-Period", str(monthly_ctx["period"]))
         # Usage log
-        _main._append_usage({
-            "ts": time.time(),
-            "event": "competitor_benchmark",
-            "api_key": x_api_key,
-            "N": N,
-            "D": D,
-            "units": units,
-            "duration_ms": float(summary.get("oscillink_tuned_time_ms", 0.0)),
-            "quota": None if limit == 0 else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
-            "monthly": None if not monthly_ctx else {"limit": monthly_ctx["limit"], "used": monthly_ctx["used"], "remaining": monthly_ctx["remaining"], "period": monthly_ctx["period"]},
-        })
+        _main._append_usage(
+            {
+                "ts": time.time(),
+                "event": "competitor_benchmark",
+                "api_key": x_api_key,
+                "N": N,
+                "D": D,
+                "units": units,
+                "duration_ms": float(summary.get("oscillink_tuned_time_ms", 0.0)),
+                "quota": None
+                if limit == 0
+                else {"limit": limit, "remaining": remaining, "reset": int(reset_at)},
+                "monthly": None
+                if not monthly_ctx
+                else {
+                    "limit": monthly_ctx["limit"],
+                    "used": monthly_ctx["used"],
+                    "remaining": monthly_ctx["remaining"],
+                    "period": monthly_ctx["period"],
+                },
+            }
+        )
     except Exception:
         pass
 

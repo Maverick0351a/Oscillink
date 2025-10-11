@@ -21,14 +21,14 @@ Scalable Working Memory \& Hallucination Control
 
 \begin{abstract}
 \noindent
-\textbf{Oscillink} is a physics-inspired, model-free coherence layer that converts a set of candidate embeddings into an \emph{explainable}, globally coherent working-memory state by minimizing a convex energy. It builds an ephemeral graph (lattice) over the candidates and solves a \emph{symmetric positive definite} (SPD) linear system using preconditioned conjugate gradients (CG). The solution yields (i) refined embeddings, (ii) an auditable energy receipt $\Delta H$, (iii) \emph{null-point} diagnostics for incoherent edges, and (iv) optional \emph{chain priors} for path-constrained reasoning. 
+\textbf{Oscillink} is a physics-inspired, model-free coherence layer that converts a set of candidate embeddings into an \emph{explainable}, globally coherent working-memory state by minimizing a convex energy. It builds an ephemeral graph (lattice) over the candidates and solves a \emph{symmetric positive definite} (SPD) linear system using preconditioned conjugate gradients (CG). The solution yields (i) refined embeddings, (ii) an auditable energy receipt $\Delta H$, (iii) \emph{null-point} diagnostics for incoherent edges, and (iv) optional \emph{chain priors} for path-constrained reasoning.
 
 We formalize the Oscillink objective, prove SPD conditions, give a practical solver and complexity analysis, and demonstrate two controlled synthetic studies: (\emph{i}) \emph{scaling} (runtime $\&$ iterations vs.~$N$) and (\emph{ii}) \emph{hallucination control} (top-$k$ trap rate reduced from $\approx 0.33$ to $0.00$ with F1 uplift). The method composes from hundreds of nodes to lattice-of-lattices with the same SPD contract.
 \end{abstract}
 
 \vspace{-0.75em}
 \section{Introduction}
-Large language and multimodal systems rely on retrieval or candidate sampling before answering or generating. Classic pipelines (e.g., RAG with cosine top-$k$) often produce \emph{disconnected} slices of context, opaque scoring, and brittle heuristics. Oscillink replaces this with a single, deterministic, \emph{energy-minimizing} coherence layer that (1) is training-free, (2) yields explainable receipts, and (3) supports explicit controls such as \emph{source gating} and \emph{chain priors}. 
+Large language and multimodal systems rely on retrieval or candidate sampling before answering or generating. Classic pipelines (e.g., RAG with cosine top-$k$) often produce \emph{disconnected} slices of context, opaque scoring, and brittle heuristics. Oscillink replaces this with a single, deterministic, \emph{energy-minimizing} coherence layer that (1) is training-free, (2) yields explainable receipts, and (3) supports explicit controls such as \emph{source gating} and \emph{chain priors}.
 
 \vspace{0.25em}
 \noindent
@@ -56,7 +56,7 @@ Throughout, $U\in\mathbb{R}^{N\times D}$ denotes the \emph{settled} (refined) st
 Oscillink minimizes a convex energy combining anchor fidelity, lattice coherence, and query attraction:
 \begin{align}
 \label{eq:energy}
-H(U) \;=\; 
+H(U) \;=\;
 \underbrace{\lambda_G \, \|U - Y\|_F^2}_{\text{anchors}}
 \;+\;
 \underbrace{\lambda_C \, \mathrm{tr}\!\big(U^\top L_{\mathrm{sym}} U\big)}_{\text{graph coherence}}
@@ -104,9 +104,9 @@ computed exactly from \eqref{eq:energy}. This is the primary scalar in the \emph
 \paragraph{Null-Point Diagnostics.}
 For an edge $(i,j)$ with weight $A_{ij}\!>\!0$,
 \begin{align}
-r_{ij} 
+r_{ij}
 \;=\;
-\lambda_C \, A_{ij} 
+\lambda_C \, A_{ij}
 \left\|
 \frac{U^\star_i}{\sqrt{d_i}} - \frac{U^\star_j}{\sqrt{d_j}}
 \right\|_2^2,
@@ -133,8 +133,8 @@ with $\gamma>0$ (screening) and $\beta\ge 0$ (source scale). We then normalize $
 
 \vspace{-0.5em}
 \section{Complexity and Implementation}
-\textbf{Graph Build.} Mutual-$k$NN from cosine similarity is $O(N^2D)$ naively (fast ANN optional).  
-\textbf{CG Matvec.} Each $M\mathbf{v}$ costs one $L_{\mathrm{sym}}\mathbf{v}$ and two diagonal scalings; $L_{\mathrm{sym}}\mathbf{v}=\mathbf{v}-D^{-1/2}A(D^{-1/2}\mathbf{v})$ gives $O(\mathrm{nnz}(A))\!=O(Nk)$ work.  
+\textbf{Graph Build.} Mutual-$k$NN from cosine similarity is $O(N^2D)$ naively (fast ANN optional).
+\textbf{CG Matvec.} Each $M\mathbf{v}$ costs one $L_{\mathrm{sym}}\mathbf{v}$ and two diagonal scalings; $L_{\mathrm{sym}}\mathbf{v}=\mathbf{v}-D^{-1/2}A(D^{-1/2}\mathbf{v})$ gives $O(\mathrm{nnz}(A))\!=O(Nk)$ work.
 \textbf{Solve.} For $D$ columns, total cost $\approx O\big(D\cdot (\mathrm{cg\_iters})\cdot Nk\big)$. In practice we parallelize across columns, use a Jacobi preconditioner, and cache $U^\star$ for multiple diagnostics (receipt, bundle, chain).
 
 \vspace{-0.5em}
@@ -179,7 +179,7 @@ F1 (top-$k$ non-trap set) & $0.673 \pm 0.170$ & $\mathbf{0.875 \pm 0.123}$ \\
 \end{center}
 
 \noindent
-\textbf{Interpretation.} With explicit gates, the lattice eliminate traps from top-$k$ under this controlled setup while raising F1. This is \emph{controllable} suppression: if a source is labelled low-trust, setting $b_i\!\approx 0$ attenuates its query pull, which the receipt also records (\emph{gating stats} + $\Delta H$). 
+\textbf{Interpretation.} With explicit gates, the lattice eliminate traps from top-$k$ under this controlled setup while raising F1. This is \emph{controllable} suppression: if a source is labelled low-trust, setting $b_i\!\approx 0$ attenuates its query pull, which the receipt also records (\emph{gating stats} + $\Delta H$).
 
 \paragraph{Energy Comparison (Uniform vs.\ Gated).}
 Using the same configuration (trials $=30$), we measured average energy drop:
@@ -201,9 +201,9 @@ optionally followed by MMR-style diversification. Here $\Delta H^{(\text{node})}
 
 \vspace{-0.5em}
 \section{Reproducibility and Practical Guidance}
-\textbf{Defaults.} $k\!\in\![5,8]$, $\lambda_G\!=\!1.0$, $\lambda_C\!\in\![0.3,0.7]$, $\lambda_Q\!\in\![2.0,5.0]$, $\lambda_P\!=\!0$ unless a chain is provided. Use normalized Laplacian, mutual-$k$NN, Jacobi preconditioner, and a CG tolerance in $[10^{-3},10^{-4}]$. 
+\textbf{Defaults.} $k\!\in\![5,8]$, $\lambda_G\!=\!1.0$, $\lambda_C\!\in\![0.3,0.7]$, $\lambda_Q\!\in\![2.0,5.0]$, $\lambda_P\!=\!0$ unless a chain is provided. Use normalized Laplacian, mutual-$k$NN, Jacobi preconditioner, and a CG tolerance in $[10^{-3},10^{-4}]$.
 
-\textbf{Diffusion gates.} If using \eqref{eq:screened}, pick $\gamma\!\in[0.05,0.3]$ and tune $\beta$ to boost informative neighborhoods; normalize $h$ to $[0,1]$. 
+\textbf{Diffusion gates.} If using \eqref{eq:screened}, pick $\gamma\!\in[0.05,0.3]$ and tune $\beta$ to boost informative neighborhoods; normalize $h$ to $[0,1]$.
 
 \textbf{Determinism.} Fix neighbor construction (deterministic tie-breaking) and solver tolerances; sign receipts with a stable state signature for auditability.
 

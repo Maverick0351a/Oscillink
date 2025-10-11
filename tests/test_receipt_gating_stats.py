@@ -11,10 +11,10 @@ def test_receipt_gating_stats_uniform():
     lat.set_query(psi)
     lat.settle()
     rec = lat.receipt()
-    meta = rec['meta']
-    assert 'gates_min' in meta and 'gates_max' in meta and 'gates_uniform' in meta
-    assert meta['gates_min'] == meta['gates_max'] == meta['gates_mean']
-    assert meta['gates_uniform'] is True
+    meta = rec["meta"]
+    assert "gates_min" in meta and "gates_max" in meta and "gates_uniform" in meta
+    assert meta["gates_min"] == meta["gates_max"] == meta["gates_mean"]
+    assert meta["gates_uniform"] is True
 
 
 def test_receipt_gating_stats_diffusion():
@@ -26,9 +26,9 @@ def test_receipt_gating_stats_diffusion():
     lat.set_query(psi, gates=gates)
     lat.settle()
     rec = lat.receipt()
-    meta = rec['meta']
-    assert meta['gates_min'] >= 0.0
-    assert meta['gates_max'] <= 1.0 + 1e-6
-    assert meta['gates_uniform'] is False
+    meta = rec["meta"]
+    assert meta["gates_min"] >= 0.0
+    assert meta["gates_max"] <= 1.0 + 1e-6
+    assert meta["gates_uniform"] is False
     # Diffusion should produce variance
-    assert meta['gates_max'] > meta['gates_min']
+    assert meta["gates_max"] > meta["gates_min"]

@@ -21,8 +21,10 @@ def test_portal_not_logged_in_message(capsys, monkeypatch, tmp_path):
 def test_login_runtime_error_mapping(monkeypatch, capsys, tmp_path):
     # Force _http_request to raise a URLError-mapped RuntimeError; main should return 2
     monkeypatch.setenv("OSCILLINK_CONFIG_DIR", str(tmp_path))
+
     def boom(*a, **k):
         raise RuntimeError("Request failed: <urlopen error>")
+
     monkeypatch.setattr(cli, "_http_request", boom)
     rc = cli.main(["login", "--code", "deadbeef"])
     err = capsys.readouterr().err

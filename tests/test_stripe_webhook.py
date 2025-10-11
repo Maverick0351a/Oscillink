@@ -14,11 +14,13 @@ def clear_webhook_events():
     yield
     _webhook_events_mem.clear()
 
+
 @pytest.fixture
 def client(monkeypatch):
     # Allow unverified for tests (no stripe lib assumed)
     monkeypatch.setenv("OSCILLINK_ALLOW_UNVERIFIED_STRIPE", "1")
     return TestClient(app)
+
 
 SUB_CREATED = {
     "id": "evt_test_created",
@@ -27,9 +29,9 @@ SUB_CREATED = {
         "object": {
             "id": "sub_123",
             "metadata": {"api_key": "key_test_1"},
-            "items": {"data": [ {"price": {"id": "price_cloud_pro_monthly"}} ]},
+            "items": {"data": [{"price": {"id": "price_cloud_pro_monthly"}}]},
         }
-    }
+    },
 }
 
 SUB_UPDATED = {
@@ -39,9 +41,9 @@ SUB_UPDATED = {
         "object": {
             "id": "sub_123",
             "metadata": {"api_key": "key_test_1"},
-            "items": {"data": [ {"price": {"id": "price_cloud_enterprise"}} ]},
+            "items": {"data": [{"price": {"id": "price_cloud_enterprise"}}]},
         }
-    }
+    },
 }
 
 SUB_DELETED = {
@@ -51,13 +53,15 @@ SUB_DELETED = {
         "object": {
             "id": "sub_123",
             "metadata": {"api_key": "key_test_1"},
-            "items": {"data": [ {"price": {"id": "price_cloud_pro_monthly"}} ]},
+            "items": {"data": [{"price": {"id": "price_cloud_pro_monthly"}}]},
         }
-    }
+    },
 }
+
 
 def post_event(client: TestClient, event: dict[str, Any]):
     return client.post("/stripe/webhook", data=json.dumps(event))
+
 
 def test_webhook_create_and_update_and_delete(client, monkeypatch):
     # Create
@@ -79,4 +83,3 @@ def test_webhook_create_and_update_and_delete(client, monkeypatch):
     assert r3.status_code == 200
     # Event storage size
     assert len(_webhook_events_mem) >= 3
-

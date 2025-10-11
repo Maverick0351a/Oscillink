@@ -15,8 +15,14 @@ def test_minimal_subset_accepts_when_signature_matches_minimal():
     # Simulate a receipt that was signed in minimal mode originally
     minimal_payload = {"sig_v": 1, "mode": "minimal", "state_sig": "abc", "deltaH_total": 1.23}
     sig = _sign(minimal_payload, secret)
-    receipt = {"meta": {"signature": {"algorithm": "HMAC-SHA256", "payload": minimal_payload, "signature": sig}}}
-    ok, payload = verify_receipt_mode(receipt, secret, require_mode=None, minimal_subset=True, required_sig_v=1)
+    receipt = {
+        "meta": {
+            "signature": {"algorithm": "HMAC-SHA256", "payload": minimal_payload, "signature": sig}
+        }
+    }
+    ok, payload = verify_receipt_mode(
+        receipt, secret, require_mode=None, minimal_subset=True, required_sig_v=1
+    )
     assert ok and payload == minimal_payload
 
 
@@ -39,8 +45,14 @@ def test_minimal_subset_accepts_with_extended_payload_when_signature_is_minimal(
         "deltaH_total": extended["deltaH_total"],
     }
     sig_min = _sign(minimal_subset, secret)
-    receipt = {"meta": {"signature": {"algorithm": "HMAC-SHA256", "payload": extended, "signature": sig_min}}}
-    ok, payload = verify_receipt_mode(receipt, secret, require_mode=None, minimal_subset=True, required_sig_v=1)
+    receipt = {
+        "meta": {
+            "signature": {"algorithm": "HMAC-SHA256", "payload": extended, "signature": sig_min}
+        }
+    }
+    ok, payload = verify_receipt_mode(
+        receipt, secret, require_mode=None, minimal_subset=True, required_sig_v=1
+    )
     assert ok and payload == minimal_subset
 
 
@@ -50,8 +62,14 @@ def test_minimal_subset_rejects_when_neither_signature_matches():
     # Sign a different payload so it matches neither extended nor its minimal subset
     wrong = {"sig_v": 1, "mode": "minimal", "state_sig": "DIFF", "deltaH_total": 9.9}
     bad_sig = _sign(wrong, secret)
-    receipt = {"meta": {"signature": {"algorithm": "HMAC-SHA256", "payload": extended, "signature": bad_sig}}}
-    ok, _ = verify_receipt_mode(receipt, secret, require_mode=None, minimal_subset=True, required_sig_v=1)
+    receipt = {
+        "meta": {
+            "signature": {"algorithm": "HMAC-SHA256", "payload": extended, "signature": bad_sig}
+        }
+    }
+    ok, _ = verify_receipt_mode(
+        receipt, secret, require_mode=None, minimal_subset=True, required_sig_v=1
+    )
     assert not ok
 
 

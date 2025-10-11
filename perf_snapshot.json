@@ -1,0 +1,72 @@
+{
+  "config": {
+    "N": 400,
+    "D": 64,
+    "kneighbors": 6,
+    "trials": 1,
+    "lamG": 1.0,
+    "lamC": 0.5,
+    "lamQ": 4.0,
+    "lamP": 0.2,
+    "chain_len": 8
+  },
+  "trials": [
+    {
+      "build_ms": 18.599271774291992,
+      "settle_ms": 4.902362823486328,
+      "receipt_ms": 48.238515853881836,
+      "deltaH": 2208.595458984375,
+      "null_points": 398,
+      "sample_null": {
+        "edge": [
+          0,
+          267
+        ],
+        "z": 13.671394348144531,
+        "residual": 0.5112255215644836
+      },
+      "chain_verdict": false,
+      "weakest_link": {
+        "k": 0,
+        "edge": [
+          0,
+          1
+        ],
+        "zscore": 19.97498321533203
+      },
+      "ustar_iters": 5,
+      "ustar_res": 1.3835204299539328e-05,
+      "ustar_converged": true,
+      "N": 400,
+      "D": 64,
+      "kneighbors": 6
+    }
+  ],
+  "aggregates": {
+    "build_ms": {
+      "mean": 18.599271774291992,
+      "stdev": 0.0
+    },
+    "settle_ms": {
+      "mean": 4.902362823486328,
+      "stdev": 0.0
+    },
+    "receipt_ms": {
+      "mean": 48.238515853881836,
+      "stdev": 0.0
+    },
+    "deltaH": {
+      "mean": 2208.595458984375,
+      "stdev": 0.0
+    },
+    "ustar_iters": {
+      "mean": 5.0,
+      "stdev": 0.0
+    },
+    "ustar_res": {
+      "mean": 1.3835204299539328e-05,
+      "stdev": 0.0
+    }
+  },
+  "converged_all": true
+}

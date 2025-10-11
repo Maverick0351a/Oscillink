@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from oscillink.preprocess.autocorrect import smart_correct
+
 from .config import get_settings
 from .runtime_config import get_rate_limit
-
 
 router = APIRouter()
 

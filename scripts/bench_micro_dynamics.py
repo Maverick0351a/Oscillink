@@ -8,6 +8,7 @@ Usage examples:
   python scripts/bench_micro_dynamics.py --dataset mars --trials 20 --k 3 --json
   python scripts/bench_micro_dynamics.py --dataset paris --trials 20 --k 3 --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,7 +69,9 @@ def _dataset_paris() -> Tuple[List[str], Set[int], Set[int]]:
     return corpus, gt_ids, trap_ids
 
 
-def generate_embeddings(corpus: List[str], d: int = 96, scale: int = 1, noise: float = 0.0) -> Tuple[np.ndarray, np.ndarray, int]:
+def generate_embeddings(
+    corpus: List[str], d: int = 96, scale: int = 1, noise: float = 0.0
+) -> Tuple[np.ndarray, np.ndarray, int]:
     """Return (Y, psi, base_n). If scale>1, replicate base corpus with small noise.
 
     base_n is the original corpus length used to map indices back for eval.
@@ -93,7 +96,7 @@ def generate_embeddings(corpus: List[str], d: int = 96, scale: int = 1, noise: f
 def cosine_topk(psi: np.ndarray, Y: np.ndarray, k: int) -> List[int]:
     Yn = Y / (np.linalg.norm(Y, axis=1, keepdims=True) + 1e-9)
     pn = psi / (np.linalg.norm(psi) + 1e-9)
-    scores = (Yn @ pn)
+    scores = Yn @ pn
     idx = np.argsort(-scores)[:k]
     return idx.tolist()
 
@@ -104,7 +107,9 @@ def f1_score(precision: float, recall: float) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
-def eval_topk(pred: List[int], gt_ids: Set[int], trap_ids: Set[int], k: int, base_n: Optional[int] = None) -> Tuple[float, float, float]:
+def eval_topk(
+    pred: List[int], gt_ids: Set[int], trap_ids: Set[int], k: int, base_n: Optional[int] = None
+) -> Tuple[float, float, float]:
     # Map predictions back to base indices if the dataset was scaled (replicated)
     pred_mapped = [int(i % base_n) for i in pred] if (base_n is not None and base_n > 0) else pred
     tp = len([i for i in pred if i in gt_ids])
@@ -119,13 +124,21 @@ def eval_topk(pred: List[int], gt_ids: Set[int], trap_ids: Set[int], k: int, bas
     return f1, hall, float(tp)
 
 
-def run_density(Y: np.ndarray, psi: np.ndarray, k: int, base_n: Optional[int] = None, with_dynamics: bool = False) -> Dict[str, float]:
+def run_density(
+    Y: np.ndarray,
+    psi: np.ndarray,
+    k: int,
+    base_n: Optional[int] = None,
+    with_dynamics: bool = False,
+) -> Dict[str, float]:
     # Evaluate three caps: 0.5 (sparse), 1.0 (default), 2.0 (dense)
     cfgs = [(0.5, "cap0.5"), (1.0, "cap1.0"), (2.0, "cap2.0")]
     out: Dict[str, float] = {}
     for cap, name in cfgs:
         t0 = time.time()
-        lat = OscillinkLattice(Y, kneighbors=6, row_cap_val=cap, lamG=1.0, lamC=0.5, lamQ=4.0, deterministic_k=True)
+        lat = OscillinkLattice(
+            Y, kneighbors=6, row_cap_val=cap, lamG=1.0, lamC=0.5, lamQ=4.0, deterministic_k=True
+        )
         # rebuild effective adjacency with new cap by reconstructing instance (lightweight for small Y)
         # For now, we use private flow: row_cap_val is only in __init__, so re-instantiation is the safe path.
         # If a public rebuild_graph() exists later, switch to that.
@@ -148,7 +161,14 @@ def run_density(Y: np.ndarray, psi: np.ndarray, k: int, base_n: Optional[int] = 
     return out
 
 
-def run_warmstart(Y: np.ndarray, psi: np.ndarray, k: int, base_n: Optional[int] = None, inertia: float = 0.0, with_dynamics: bool = False) -> Dict[str, float]:
+def run_warmstart(
+    Y: np.ndarray,
+    psi: np.ndarray,
+    k: int,
+    base_n: Optional[int] = None,
+    inertia: float = 0.0,
+    with_dynamics: bool = False,
+) -> Dict[str, float]:
     out: Dict[str, float] = {}
     lat = OscillinkLattice(Y, kneighbors=6, lamG=1.0, lamC=0.5, lamQ=4.0, deterministic_k=True)
     lat.set_query(psi)
@@ -160,7 +180,7 @@ def run_warmstart(Y: np.ndarray, psi: np.ndarray, k: int, base_n: Optional[int] 
     f11, h11, _ = eval_topk(pred1, gt_ids, trap_ids, k, base_n=base_n)
 
     # "Similar" query: tiny perturbation toward psi (keep warm state)
-    psi2 = (psi * 0.95 + 0.05 * Y[0])
+    psi2 = psi * 0.95 + 0.05 * Y[0]
     psi2 = psi2 / (np.linalg.norm(psi2) + 1e-12)
     lat.set_query(psi2)
     # Inertia approximation: blend state toward previous U before next settle
@@ -191,7 +211,14 @@ def run_warmstart(Y: np.ndarray, psi: np.ndarray, k: int, base_n: Optional[int] 
 def _run_once(corpus: List[str], args) -> Tuple[Dict[str, float], Dict[str, float]]:
     Y, psi, base_n = generate_embeddings(corpus, scale=args.scale, noise=args.noise)
     d = run_density(Y, psi, args.k, base_n=base_n, with_dynamics=args.with_dynamics)
-    w = run_warmstart(Y, psi, args.k, base_n=base_n, inertia=max(0.0, min(1.0, args.inertia)), with_dynamics=args.with_dynamics)
+    w = run_warmstart(
+        Y,
+        psi,
+        args.k,
+        base_n=base_n,
+        inertia=max(0.0, min(1.0, args.inertia)),
+        with_dynamics=args.with_dynamics,
+    )
     return d, w
 
 
@@ -201,10 +228,16 @@ def _parse_args():
     ap.add_argument("--trials", type=int, default=10)
     ap.add_argument("--k", type=int, default=3)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--scale", type=int, default=1, help="Scale factor for dataset size (replicate with noise)")
+    ap.add_argument(
+        "--scale", type=int, default=1, help="Scale factor for dataset size (replicate with noise)"
+    )
     ap.add_argument("--noise", type=float, default=0.01, help="Embedding noise for scaled replicas")
-    ap.add_argument("--inertia", type=float, default=0.0, help="Warm-start inertia blend factor in [0,1]")
-    ap.add_argument("--with-dynamics", action="store_true", help="Capture dynamics (requires env flag set)")
+    ap.add_argument(
+        "--inertia", type=float, default=0.0, help="Warm-start inertia blend factor in [0,1]"
+    )
+    ap.add_argument(
+        "--with-dynamics", action="store_true", help="Capture dynamics (requires env flag set)"
+    )
     return ap.parse_args()
 
 
@@ -215,12 +248,14 @@ def _print_human(summary: RunSummary, with_dynamics: bool) -> None:
     base_density = summary.density
     for name in ("cap0.5", "cap1.0", "cap2.0"):
         print(
-            f"{name}: f1={base_density[name+'_f1']:.3f} hall={base_density[name+'_hall']:.3f} "
-            f"iters={base_density[name+'_iters']:.1f} t_ms={base_density[name+'_t_ms']:.2f} "
-            f"lat_ms={base_density[name+'_latency_ms']:.2f}"
+            f"{name}: f1={base_density[name + '_f1']:.3f} hall={base_density[name + '_hall']:.3f} "
+            f"iters={base_density[name + '_iters']:.1f} t_ms={base_density[name + '_t_ms']:.2f} "
+            f"lat_ms={base_density[name + '_latency_ms']:.2f}"
         )
         if with_dynamics:
-            print(f"     temp={base_density.get(name+'_temp', 0.0):.4f} visc={base_density.get(name+'_visc', 0.0):.4f}")
+            print(
+                f"     temp={base_density.get(name + '_temp', 0.0):.4f} visc={base_density.get(name + '_visc', 0.0):.4f}"
+            )
     print("-- warm-start --")
     base_warm = summary.warmstart
     print(
@@ -231,7 +266,9 @@ def _print_human(summary: RunSummary, with_dynamics: bool) -> None:
         f"total_lat_ms={base_warm['warm_total_latency_ms']:.2f}"
     )
     if with_dynamics:
-        print(f"     warm_temp2={base_warm.get('warm_temp2', 0.0):.4f} warm_visc2={base_warm.get('warm_visc2', 0.0):.4f}")
+        print(
+            f"     warm_temp2={base_warm.get('warm_temp2', 0.0):.4f} warm_visc2={base_warm.get('warm_visc2', 0.0):.4f}"
+        )
 
 
 def main():
@@ -245,14 +282,34 @@ def main():
     global gt_ids, trap_ids
     gt_ids, trap_ids = gt, traps
 
-    base_density: Dict[str, float] = {"cap0.5_f1": 0.0, "cap1.0_f1": 0.0, "cap2.0_f1": 0.0,
-                                      "cap0.5_hall": 0.0, "cap1.0_hall": 0.0, "cap2.0_hall": 0.0,
-                                      "cap0.5_iters": 0.0, "cap1.0_iters": 0.0, "cap2.0_iters": 0.0,
-                                      "cap0.5_t_ms": 0.0, "cap1.0_t_ms": 0.0, "cap2.0_t_ms": 0.0,
-                                      "cap0.5_latency_ms": 0.0, "cap1.0_latency_ms": 0.0, "cap2.0_latency_ms": 0.0}
-    base_warm: Dict[str, float] = {"warm_iters1": 0.0, "warm_iters2": 0.0, "warm_t1_ms": 0.0, "warm_t2_ms": 0.0,
-                                   "warm_f1_1": 0.0, "warm_f1_2": 0.0, "warm_hall_1": 0.0, "warm_hall_2": 0.0,
-                                   "warm_total_latency_ms": 0.0}
+    base_density: Dict[str, float] = {
+        "cap0.5_f1": 0.0,
+        "cap1.0_f1": 0.0,
+        "cap2.0_f1": 0.0,
+        "cap0.5_hall": 0.0,
+        "cap1.0_hall": 0.0,
+        "cap2.0_hall": 0.0,
+        "cap0.5_iters": 0.0,
+        "cap1.0_iters": 0.0,
+        "cap2.0_iters": 0.0,
+        "cap0.5_t_ms": 0.0,
+        "cap1.0_t_ms": 0.0,
+        "cap2.0_t_ms": 0.0,
+        "cap0.5_latency_ms": 0.0,
+        "cap1.0_latency_ms": 0.0,
+        "cap2.0_latency_ms": 0.0,
+    }
+    base_warm: Dict[str, float] = {
+        "warm_iters1": 0.0,
+        "warm_iters2": 0.0,
+        "warm_t1_ms": 0.0,
+        "warm_t2_ms": 0.0,
+        "warm_f1_1": 0.0,
+        "warm_f1_2": 0.0,
+        "warm_hall_1": 0.0,
+        "warm_hall_2": 0.0,
+        "warm_total_latency_ms": 0.0,
+    }
 
     for _ in range(args.trials):
         d, w = _run_once(corpus, args)
@@ -267,7 +324,13 @@ def main():
     for k2 in base_warm:
         base_warm[k2] /= max(1, args.trials)
 
-    summary = RunSummary(dataset=args.dataset, k=args.k, trials=args.trials, density=base_density, warmstart=base_warm)
+    summary = RunSummary(
+        dataset=args.dataset,
+        k=args.k,
+        trials=args.trials,
+        density=base_density,
+        warmstart=base_warm,
+    )
     if args.json:
         print(summary.to_json())
     else:

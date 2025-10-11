@@ -8,21 +8,21 @@ from oscillink.core.perf import compare_perf
 
 def test_compare_perf_detects_no_failures():
     baseline = {
-        'aggregates': {
-            'build_ms': {'mean': 1.0},
-            'settle_ms': {'mean': 2.0},
-            'receipt_ms': {'mean': 3.0},
+        "aggregates": {
+            "build_ms": {"mean": 1.0},
+            "settle_ms": {"mean": 2.0},
+            "receipt_ms": {"mean": 3.0},
         }
     }
     current = {
-        'aggregates': {
-            'build_ms': {'mean': 1.1},
-            'settle_ms': {'mean': 2.1},
-            'receipt_ms': {'mean': 3.1},
+        "aggregates": {
+            "build_ms": {"mean": 1.1},
+            "settle_ms": {"mean": 2.1},
+            "receipt_ms": {"mean": 3.1},
         }
     }
     res = compare_perf(baseline, current, tolerance_pct=20.0)
-    assert not res['failures']
+    assert not res["failures"]
 
 
 def test_json_line_logger_emits_events():

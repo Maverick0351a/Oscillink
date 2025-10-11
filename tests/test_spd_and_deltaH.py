@@ -10,7 +10,7 @@ def test_deltaH_nonnegative_and_spd():
 
     lat = OscillinkLattice(Y, kneighbors=6, lamG=1.0, lamC=0.5, lamQ=4.0)
     lat.set_query(psi=psi)
-    lat.add_chain([1,3,5,7], lamP=0.2)
+    lat.add_chain([1, 3, 5, 7], lamP=0.2)
 
     lat.settle(dt=1.0, max_iters=8, tol=1e-3)
     rec = lat.receipt()

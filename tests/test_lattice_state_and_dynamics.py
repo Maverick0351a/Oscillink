@@ -55,6 +55,7 @@ def test_invalid_modes_and_errors():
         pass
     # set_gates wrong length
     import numpy as np
+
     try:
         lat.set_gates(np.ones(lat.N + 1, dtype=np.float32))
         raise AssertionError("expected ValueError")
@@ -99,5 +100,5 @@ def test_json_line_logger_captures_events():
     _ = lat.receipt()
     content = buf.getvalue().strip().splitlines()
     # should have at least settle and receipt events
-    assert any("\"event\":\"settle\"" in line for line in content)
-    assert any("\"event\":\"receipt\"" in line for line in content)
+    assert any('"event":"settle"' in line for line in content)
+    assert any('"event":"receipt"' in line for line in content)

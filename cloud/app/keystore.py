@@ -5,6 +5,7 @@ Phase: foundational (Absolutely Needed).
 Provides a pluggable interface so later we can swap in Firestore without rewriting
 handlers or quota logic.
 """
+
 from __future__ import annotations
 
 import os
@@ -27,19 +28,25 @@ class KeyMetadata:
     def is_active(self) -> bool:
         return self.status == "active"
 
+
 class KeyStore:
     """Abstract base for key lookups.
 
     Implementations should be lightweight; Firestore backend is optional and lazily imported.
     """
+
     def get(self, api_key: str) -> Optional[KeyMetadata]:  # pragma: no cover - interface
         raise NotImplementedError
-    def update(self, api_key: str, **fields) -> Optional[KeyMetadata]:  # pragma: no cover - interface
+
+    def update(
+        self, api_key: str, **fields
+    ) -> Optional[KeyMetadata]:  # pragma: no cover - interface
         """Update mutable fields for a key; returns updated metadata or None if absent.
 
         Implementations should create the key if it does not exist when explicit create=True passed.
         """
         raise NotImplementedError
+
 
 class InMemoryKeyStore(KeyStore):
     """Key store seeded from environment.
@@ -53,13 +60,13 @@ class InMemoryKeyStore(KeyStore):
         self._keys: Dict[str, KeyMetadata] = {}
         raw = os.getenv("OSCILLINK_API_KEYS", "").strip()
         if raw:
-            for k in [x.strip() for x in raw.split(',') if x.strip()]:
+            for k in [x.strip() for x in raw.split(",") if x.strip()]:
                 self._keys[k] = KeyMetadata(api_key=k)
         tiers = os.getenv("OSCILLINK_KEY_TIERS", "").strip()
         if tiers:
-            for part in [x.strip() for x in tiers.split(';') if x.strip()]:
-                if ':' in part:
-                    k, t = part.split(':', 1)
+            for part in [x.strip() for x in tiers.split(";") if x.strip()]:
+                if ":" in part:
+                    k, t = part.split(":", 1)
                     meta = self._keys.get(k)
                     if meta:
                         meta.tier = t
@@ -69,6 +76,7 @@ class InMemoryKeyStore(KeyStore):
 
     def get(self, api_key: str) -> Optional[KeyMetadata]:
         return self._keys.get(api_key)
+
     def update(self, api_key: str, create: bool = False, **fields) -> Optional[KeyMetadata]:
         meta = self._keys.get(api_key)
         if not meta and not create:
@@ -82,6 +90,7 @@ class InMemoryKeyStore(KeyStore):
                 setattr(meta, k, v)
         meta.updated_at = time.time()
         return meta
+
 
 class FirestoreKeyStore(KeyStore):  # pragma: no cover - covered indirectly when firestore installed
     """Firestore-backed key store.
@@ -99,6 +108,7 @@ class FirestoreKeyStore(KeyStore):  # pragma: no cover - covered indirectly when
 
     Only fields present are applied; missing fields fall back to KeyMetadata defaults.
     """
+
     def __init__(self):
         try:
             from google.cloud import firestore  # type: ignore
@@ -125,7 +135,10 @@ class FirestoreKeyStore(KeyStore):  # pragma: no cover - covered indirectly when
             updated_at=float(data.get("updated_at", time.time())),
         )
         return meta
-    def update(self, api_key: str, create: bool = False, **fields) -> Optional[KeyMetadata]:  # pragma: no cover - network path
+
+    def update(
+        self, api_key: str, create: bool = False, **fields
+    ) -> Optional[KeyMetadata]:  # pragma: no cover - network path
         doc_ref = self._client.collection(self._collection).document(api_key)
         now = time.time()
         existing = doc_ref.get()
@@ -144,8 +157,10 @@ class FirestoreKeyStore(KeyStore):  # pragma: no cover - covered indirectly when
         doc_ref.set(base, merge=True)
         return self.get(api_key)
 
+
 # Singleton accessor (simple for now)
 _key_store: Optional[KeyStore] = None
+
 
 def get_keystore() -> KeyStore:
     """Return singleton keystore instance.
@@ -159,7 +174,9 @@ def get_keystore() -> KeyStore:
         _key_store = FirestoreKeyStore() if backend == "firestore" else InMemoryKeyStore()
     return _key_store
 
+
 # --- Tier / Feature Mutation Helpers (for Stripe or admin paths) ---
+
 
 def update_key_tier(api_key: str, tier: str, *, create: bool = False) -> KeyMetadata | None:
     """Update (or create) a key's tier and touch updated_at.
@@ -170,4 +187,3 @@ def update_key_tier(api_key: str, tier: str, *, create: bool = False) -> KeyMeta
     ks = get_keystore()
     meta = ks.update(api_key, create=create, tier=tier)
     return meta
-

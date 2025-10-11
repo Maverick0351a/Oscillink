@@ -122,10 +122,13 @@ def compute_diffusion_gates(
     h = np.clip(h, 0.0, 1.0).astype(np.float32)
     return h
 
+
 __all__ = ["compute_diffusion_gates"]
 
 
-def _solve_screened_diffusion(L_sym: np.ndarray, gamma: float, s: np.ndarray, *, method: str, tol: float, max_iters: int) -> np.ndarray:
+def _solve_screened_diffusion(
+    L_sym: np.ndarray, gamma: float, s: np.ndarray, *, method: str, tol: float, max_iters: int
+) -> np.ndarray:
     """Solve (L_sym + gamma I) h = s using either direct or CG method.
 
     Returns h as float32. On failure, returns uniform ones.
@@ -134,12 +137,16 @@ def _solve_screened_diffusion(L_sym: np.ndarray, gamma: float, s: np.ndarray, *,
     if method == "cg":
         # Jacobi preconditioner: diag(L_sym) + gamma
         M_diag = np.diag(L_sym).astype(np.float32) + float(gamma)
+
         def A_mul(x: np.ndarray) -> np.ndarray:
             x2 = x if x.ndim == 2 else x[:, None]
             out = (L_sym @ x2) + gamma * x2
             return out if x.ndim == 2 else out.squeeze()
+
         try:
-            h, _iters, _res = cg_solve(A_mul, s.astype(np.float32), x0=None, M_diag=M_diag, tol=tol, max_iters=max_iters)
+            h, _iters, _res = cg_solve(
+                A_mul, s.astype(np.float32), x0=None, M_diag=M_diag, tol=tol, max_iters=max_iters
+            )
             return h.astype(np.float32)
         except Exception:
             return np.ones(N, dtype=np.float32)

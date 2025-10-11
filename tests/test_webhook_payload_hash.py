@@ -11,8 +11,14 @@ client = TestClient(app)
 EVENT = {
     "id": "evt_hash_test_1",
     "type": "customer.subscription.created",
-    "data": {"object": {"metadata": {"api_key": "key_hash"}, "items": {"data": [{"price": {"id": "price_free"}}]}}}
+    "data": {
+        "object": {
+            "metadata": {"api_key": "key_hash"},
+            "items": {"data": [{"price": {"id": "price_free"}}]},
+        }
+    },
 }
+
 
 def test_webhook_payload_hash_present(monkeypatch):
     monkeypatch.setenv("OSCILLINK_STRIPE_PRICE_MAP", "price_free:free")

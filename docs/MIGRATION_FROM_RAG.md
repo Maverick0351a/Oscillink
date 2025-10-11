@@ -142,7 +142,7 @@ from oscillink import compute_diffusion_gates
 
 # Compute trust scores based on source reliability
 gates = compute_diffusion_gates(
-    doc_embeddings, 
+    doc_embeddings,
     query_embedding,
     kneighbors=6,
     beta=1.0,  # Diffusion strength
@@ -227,13 +227,13 @@ class OscillinkRetriever(BaseRetriever):
         self.embeddings = embeddings
         self.documents = documents
         self.kneighbors = kneighbors
-    
+
     def get_relevant_documents(self, query):
         # Compute embeddings
-        doc_embeddings = [self.embeddings.embed_query(d.page_content) 
+        doc_embeddings = [self.embeddings.embed_query(d.page_content)
                          for d in self.documents]
         query_embedding = self.embeddings.embed_query(query)
-        
+
         # Create coherent memory
         lattice = OscillinkLattice(
             np.array(doc_embeddings).astype(np.float32),
@@ -241,7 +241,7 @@ class OscillinkRetriever(BaseRetriever):
         )
         lattice.set_query(np.array(query_embedding).astype(np.float32))
         lattice.settle()
-        
+
         # Return coherent documents
         bundle = lattice.bundle(k=5)
         return [self.documents[item["id"]] for item in bundle]

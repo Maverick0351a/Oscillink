@@ -43,7 +43,9 @@ def mutual_knn_adj(
         indices = np.arange(N)
         for i in range(N):
             row = S[i]
-            order = np.lexsort((indices, -row))  # primary: -row (similarity desc), tie-break: index asc
+            order = np.lexsort(
+                (indices, -row)
+            )  # primary: -row (similarity desc), tie-break: index asc
             keep = order[:k]
             for j in keep:
                 if row[j] > 0:
@@ -63,6 +65,7 @@ def mutual_knn_adj(
     A = np.maximum(A * M, (A * M).T)
     return A
 
+
 def row_sum_cap(A: np.ndarray, cap: float) -> np.ndarray:
     """Cap row sums while preserving (approximate) symmetry.
 
@@ -79,6 +82,7 @@ def row_sum_cap(A: np.ndarray, cap: float) -> np.ndarray:
     # final symmetrization guard (numerical drift)
     return 0.5 * (A2 + A2.T)
 
+
 def normalized_laplacian(A: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     d = A.sum(axis=1)
     sqrt_deg = np.sqrt(np.maximum(d, 1e-12))
@@ -88,22 +92,24 @@ def normalized_laplacian(A: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     L = np.eye(N, dtype=np.float32) - W.astype(np.float32)
     return L, sqrt_deg
 
+
 def build_path_laplacian(
     N: int,
     chain: list[int],
     weights: list[float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     if weights is None:
-        weights = [1.0]*(max(0, len(chain)-1))
+        weights = [1.0] * (max(0, len(chain) - 1))
     A = np.zeros((N, N), dtype=np.float32)
-    for k in range(len(chain)-1):
-        i, j = int(chain[k]), int(chain[k+1])
+    for k in range(len(chain) - 1):
+        i, j = int(chain[k]), int(chain[k + 1])
         w = float(weights[k])
         if 0 <= i < N and 0 <= j < N:
             A[i, j] = max(A[i, j], w)
             A[j, i] = max(A[j, i], w)
     L, _ = normalized_laplacian(A)
     return L, A
+
 
 def mmr_diversify(Y: np.ndarray, scores: np.ndarray, k: int, lambda_div: float = 0.5) -> list[int]:
     """Simple MMR over cosine similarities using anchors Y as representers."""

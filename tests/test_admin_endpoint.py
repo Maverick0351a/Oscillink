@@ -13,7 +13,11 @@ def set_admin_secret(monkeypatch):
 def test_admin_create_and_get_key():
     client = TestClient(app)
     # Create key
-    resp = client.put("/admin/keys/testkey123", json={"tier": "pro", "status": "active"}, headers={"x-admin-secret": "test-admin"})
+    resp = client.put(
+        "/admin/keys/testkey123",
+        json={"tier": "pro", "status": "active"},
+        headers={"x-admin-secret": "test-admin"},
+    )
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["api_key"] == "testkey123"
