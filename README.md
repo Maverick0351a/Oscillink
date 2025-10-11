@@ -12,6 +12,8 @@
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 </p>
 
+<sub>Patent pending: U.S. Provisional 63/897,572 (filed 2025‑10‑11). See <a href="PATENTS.md">PATENTS.md</a>.</sub>
+
 Setup: synthetic “facts + traps” dataset — see the notebook for N, k, trials, seed. Reproducible via `notebooks/04_hallucination_reduction.ipynb`. Traps flagged; gate=0.01, off‑topic damp=0.5.
 
 - ⚡ Inverse scaling: latency often decreases as corpus size grows (<40 ms at N≈1200 CPU). For fixed D, k, and CG tol, settle tends to stay ~constant or improve with denser graphs. [scaling chart](assets/benchmarks/scale_timing.png) · [run](scripts/scale_benchmark.py)
