@@ -60,7 +60,9 @@ SUB_DELETED = {
 
 
 def post_event(client: TestClient, event: dict[str, Any]):
-    return client.post("/stripe/webhook", data=json.dumps(event))
+    return client.post(
+        "/stripe/webhook", content=json.dumps(event), headers={"content-type": "application/json"}
+    )
 
 
 def test_webhook_create_and_update_and_delete(client, monkeypatch):

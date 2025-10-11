@@ -11,12 +11,18 @@ Thank you for considering a contribution! This project aims for **clarity, repro
 ## Development Setup
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # or .\.venv\Scripts\activate on Windows
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+# macOS/Linux
+# source .venv/bin/activate
+
 pip install -e .[dev]
+pre-commit install  # install git hooks (auto-lint/format/type on commit)
+
+# One-shot checks
 ruff check .
 mypy oscillink
 pytest -q
-pre-commit install  # install git hooks (auto lint on commit)
 ```
 
 ## Issue Tracking
@@ -49,8 +55,8 @@ Maintainers only:
 1. Ensure `[Unreleased]` section is curated.
 2. Bump version in `pyproject.toml` & `oscillink/__init__.py`.
 3. Run full test suite + a representative benchmark.
-4. Commit & tag: `git tag vX.Y.Z && git push --tags`.
-5. GitHub Actions `Release` workflow builds & publishes (requires `PYPI_API_TOKEN` secret).
+4. Commit & tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. GitHub Actions `Publish to PyPI` uses GitHub OIDC trusted publishing (no token secrets required).
 
 ## Security / Integrity
 - Receipts can be signed; avoid logging secrets.
