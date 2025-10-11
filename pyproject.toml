@@ -59,6 +59,7 @@ dev = [
   "fastapi>=0.111",
   "httpx>=0.27",
   "orjson>=3.9",
+  "python-multipart>=0.0.6",
   "prometheus-client>=0.20",
   "matplotlib>=3.7"
 ]
@@ -108,7 +109,7 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E","F","I","UP","B","N","SIM","C90"]
-# Ignore style modernizations we defer (keep Py3.9 syntax & explicit typing imports)
+# Ignore selected modernizations we defer (keep some explicit typing imports, etc.)
 ignore = [
   "N802","N803","N806",  # naming
   "N815",  # allow lamG/lamC/lamQ/lamP parameter style (domain-specific symbols)
@@ -128,6 +129,11 @@ ignore = [
 python_version = "3.10"
 warn_unused_ignores = true
 pretty = true
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore:Please use `import python_multipart` instead\\.:PendingDeprecationWarning:starlette.formparsers",
+]
 
 [[tool.mypy.overrides]]
 # sentence-transformers is an optional runtime dependency for embeddings; we fall back when absent.

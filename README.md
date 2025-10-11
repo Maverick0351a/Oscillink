@@ -12,7 +12,7 @@
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 </p>
 
-<sub>CI matrix: Python 3.9–3.12 × NumPy 1.x and 2.x</sub>
+<sub>CI matrix: Python 3.10–3.12 × NumPy 1.x and 2.x</sub>
 
 <sub>Patent pending: U.S. Provisional 63/897,572 (filed 2025‑10‑11). See <a href="PATENTS.md">PATENTS.md</a>.</sub>
 

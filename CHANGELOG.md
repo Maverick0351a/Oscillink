@@ -2,6 +2,11 @@
 # [0.1.9] - 2025-10-10
 ## [Unreleased]
 ### Changed
+- Dropped Python 3.9 support; project now supports Python 3.10–3.12 only.
+
+### Removed
+- Experimental OLF prototype and related artifacts under `experiments/` to avoid confusion and coverage noise.
+### Changed
 - NumPy policy aligned: support 1.22–<3.0 (1.x and 2.x). Updated pyproject and README.
 - CI expanded to Python 3.9–3.12 × NumPy 1.x/2.x matrix; retains ruff+mypy and perf checks.
 
