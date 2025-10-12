@@ -1,0 +1,34 @@
+# Example tuned for EKS with AWS Load Balancer Controller
+adminSecretRefName: oscillink-admin-env
+
+env:
+  OSCILLINK_LICENSE_REQUIRED: "1"
+
+networkPolicy:
+  enabled: true
+  allowDNS: true
+  egressCIDR: 0.0.0.0/0
+  egressPorts: [443, 80]
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  cpu:
+    enabled: true
+    targetAverageUtilization: 70
+
+ingress:
+  enabled: true
+  host: oscillink.example.eks
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  tls:
+    enabled: true
+    secretName: oscillink-tls

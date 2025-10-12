@@ -30,4 +30,5 @@ repos:
       - id: trailing-whitespace
       - id: check-merge-conflict
       - id: check-yaml
+        exclude: ^deploy/helm/.*
       - id: check-toml

@@ -1,0 +1,11 @@
+# Overlay to reduce ingress-level logging and limit request body size
+# Use with your cluster preset (gke/eks/aks) and/or values-security.yaml
+
+ingress:
+  enabled: true
+  annotations:
+    # NGINX ingress annotations
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    # ALB ingress annotations (ignored by nginx)
+    alb.ingress.kubernetes.io/load-balancer-attributes: access_logs.s3.enabled=false

@@ -1,15 +1,18 @@
-# Oscillink — Physics‑Based Coherent Memory
+# Oscillink — Self‑Optimizing Memory for Generative Models and Databases
 
 Build coherence into retrieval and generation. Deterministic receipts for every decision. Latency that scales gracefully with corpus size.
 
 <p align="left">
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
+	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/codeql.yml/badge.svg"/></a>
+	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/pip-audit.yml"><img alt="pip-audit" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/pip-audit.yml/badge.svg"/></a>
 	<a href="https://app.codecov.io/gh/Maverick0351a/Oscillink/tree/main"><img alt="Coverage" src="https://codecov.io/gh/Maverick0351a/Oscillink/branch/main/graph/badge.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
+	<a href="PATENTS.md"><img alt="Patent pending" src="https://img.shields.io/badge/Patent-pending-blueviolet.svg"/></a>
 	<br/>
-	<sub>CI: Python 3.10–3.12 × NumPy 1.x/2.x · <a href="PATENTS.md">Patent pending</a></sub>
+	<sub>CI: Python 3.10–3.12 × NumPy 1.x/2.x</sub>
 
 </p>
 
@@ -25,6 +28,35 @@ Setup: synthetic “facts + traps” dataset — see the notebook for N, k, tria
 <p>
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 </p>
+
+### Table of contents
+
+- [TL;DR](#tldr)
+- [Quickstart](#quickstart)
+- [Adapters & model compatibility](#adapters--model-compatibility)
+- [Cloud API (beta)](#option-b-cloud-api-beta)
+- [Proven Results](#proven-results)
+- [Performance](#performance-sdk-reference)
+- [How It Works](#how-it-works-technical)
+- [Install](#install)
+- [Run the server](#run-the-server-operators)
+- [Use the Cloud](#use-the-cloud)
+- [Licensed Container (customer-managed)](#licensed-container-customer-managed)
+- [Docs & examples](#docs--examples)
+- [Troubleshooting](#troubleshooting-cloud)
+
+### SDK at a glance
+
+```python
+from oscillink import Oscillink
+
+# Y: (N, D) document embeddings; psi: (D,) query embedding (float32 recommended)
+lattice = Oscillink(Y, kneighbors=6)
+lattice.set_query(psi)
+lattice.settle()
+topk = lattice.bundle(k=5)  # coherent results
+receipts = lattice.receipt()  # deterministic audit (energy breakdown)
+```
 
 ### Quick install (60 seconds)
 
@@ -65,7 +97,7 @@ With fixed D=64, k=6, tol=1e-3 and Jacobi preconditioning, CG converges in ~3–
 
 <p align="center"><img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/></p>
 
-<p align="center"><i>Current: v0.1.11 • API v1 • Cloud: beta</i></p>
+<p align="center"><i>Current: v0.1.12 • API v1 • Cloud: beta</i></p>
 
 ---
 
@@ -175,6 +207,9 @@ response = httpx.post(
 
 result = response.json()
 coherent_context = result["bundle"]  # Coherent, not just similar
+audit_trail = result["receipt"]  # Deterministic proof
+```
+
 ## Cloud feature flags and headers (beta)
 
 These toggles are off by default and safe to enable gradually. They only affect the cloud server.
@@ -191,8 +226,6 @@ These toggles are off by default and safe to enable gradually. They only affect 
 	- Per-key capacity: `OSCILLINK_CACHE_CAP` (default `128`)
 	- `/bundle` responses include `X-Cache: HIT|MISS`; on HIT also `X-Cache-Hits` and `X-Cache-Age`.
 
-audit_trail = result["receipt"]  # Deterministic proof
-```
 
 ---
 
@@ -644,6 +677,102 @@ r.raise_for_status()
 print(r.json())
 ```
 
+## Licensed Container (customer-managed)
+
+If you prefer to run Oscillink entirely inside your VPC and only send minimal license/usage heartbeats, use the licensed container. No embeddings or content ever leave your network.
+
+What you get:
+- Entitlements and feature gating via a signed JWT license (Ed25519)
+- Local enforcement of caps (nodes, dim, monthly units) and QPS
+- Optional minimal telemetry: aggregated counters only
+
+Quickstart (Docker):
+- Create a folder `deploy\license` and place your license file `oscillink.lic` (JWT) inside.
+- Run `docker-compose -f deploy/docker-compose.yml up -d`.
+- The API will be available on http://localhost:8000 (health at `/health`).
+
+Required environment variables (container):
+- `OSCILLINK_LICENSE_PATH` — path to the mounted license file (default in our compose: `/run/secrets/oscillink.lic`)
+- `OSCILLINK_JWKS_URL` — URL to your license service JWKS (e.g., `https://license.oscillink.com/.well-known/jwks.json`)
+
+Optional (telemetry/usage):
+- `OSCILLINK_TELEMETRY` — set to `minimal` for aggregated counters only (default in compose)
+- `OSCILLINK_USAGE_LOG` — local JSONL path to append usage counters (e.g., `/data/usage.jsonl`)
+- `OSCILLINK_USAGE_FLUSH_URL` — if set, background flusher posts batches to this URL
+- `OSCILLINK_LICENSE_ID` — identifier included in usage reports
+
+Optional (JWT verification tuning):
+- `OSCILLINK_JWT_ISS` — expected issuer (iss) to enforce
+- `OSCILLINK_JWT_AUD` — expected audience (aud) to enforce
+- `OSCILLINK_JWT_LEEWAY` — seconds of clock skew allowance (default 300)
+- `OSCILLINK_JWKS_TTL` — JWKS cache TTL seconds (default 3600)
+- `OSCILLINK_JWKS_OFFLINE_GRACE` — allow cached JWKS for this many seconds if JWKS URL is unreachable (default 86400)
+
+Windows note:
+- The compose file mounts `deploy\\license` and `deploy\\data`. Ensure these directories exist on Windows before starting.
+
+Kubernetes (Helm):
+- Chart skeleton is under `deploy/helm/oscillink`. Create a Secret with your license and install the chart:
+	- Set `image.repository` and `image.tag` as needed.
+	- Mount the license secret at `/run/secrets/oscillink.lic`.
+ 	- Set `OSCILLINK_LICENSE_PATH` and `OSCILLINK_JWKS_URL` via values.
+
+License service (tiny):
+- The repo includes a minimal FastAPI sketch at `license_svc/main.py` with endpoints:
+	- `/.well-known/jwks.json` for public keys
+	- `/v1/license/renew` to renew tokens
+	- `/v1/usage/report` to accept aggregated usage batches (HMAC)
+
+Notes:
+- At container start, `entrypoint.sh` verifies the JWT against JWKS and exports entitlements to `/run/oscillink_entitlements.json` and an env file `/run/oscillink_entitlements.env` consumed by the app.
+- Readiness endpoint: `/license/status` reflects license status (ok/stale/expired/unlicensed). Set `OSCILLINK_LICENSE_REQUIRED=1` to fail readiness (503) when expired/missing. Helm chart wires readinessProbe to this path and livenessProbe to `/health`.
+- License→env mapping: the verifier exports limits to envs honored by the app:
+	- `OSCILLINK_MAX_NODES`, `OSCILLINK_MAX_DIM` — enforced against request shapes
+	- `OSCILLINK_RATE_LIMIT`/`OSCILLINK_RATE_WINDOW` — global QPS with `X-RateLimit-*` headers
+	- `OSCILLINK_KEY_NODE_UNITS_LIMIT`/`OSCILLINK_KEY_NODE_UNITS_WINDOW` — per-key quota with `X-Quota-*` headers
+	- `OSCILLINK_MONTHLY_CAP` — monthly unit cap override (else tier catalog applies), with `X-Monthly-*` headers
+	- `OSCILLINK_API_KEYS` and `OSCILLINK_KEY_TIERS` — enables auth and tier mapping
+	- `OSCILLINK_FEAT_*` — feature toggles overlay (e.g., `OSCILLINK_FEAT_DIFFUSION_GATES=1`)
+- Set `OSCILLINK_USAGE_LOG` to a file path to capture local usage JSONL; set `OSCILLINK_USAGE_FLUSH_URL` and `OSCILLINK_LICENSE_ID` to enable periodic batch upload (the flusher retries with backoff and idempotency keys).
+
+Operator introspection:
+- Set an admin secret and query the effective limits and overlays for debugging:
+
+```powershell
+$env:OSCILLINK_ADMIN_SECRET = "<random>"
+curl -H "X-Admin-Secret: $env:OSCILLINK_ADMIN_SECRET" http://localhost:8000/admin/introspect
+```
+
+The response includes license status, enforced limits (nodes, dim, rate/quota/monthly caps, per-IP and endpoint rate limits), cache settings, feature overlays (`OSCILLINK_FEAT_*`), and API key configuration mode.
+
+### Kubernetes Helm add-ons
+
+The Helm chart includes optional production hardening resources you can enable via `values.yaml`:
+
+- NetworkPolicy: restricts ingress to port 8080 and allows egress to JWKS endpoints. Enable with `networkPolicy.enabled=true`. Adjust `egressCIDR` and `egressPorts` as needed.
+- PodDisruptionBudget: keep at least one pod available during voluntary disruptions. Enable with `pdb.enabled=true` and tune `minAvailable`/`maxUnavailable`.
+- HorizontalPodAutoscaler: scale based on CPU/memory utilization. Enable with `hpa.enabled=true` and set utilization targets.
+- Ingress: optional HTTP(S) exposure. Enable with `ingress.enabled=true`, set `ingress.host`, and configure TLS via `ingress.tls.*`.
+
+For private clusters, also consider restricting `/metrics` via NetworkPolicy or a service mesh policy.
+
+### Operations: metrics and logging knobs
+
+Operators can enable low-noise JSON access logs and protect the metrics endpoint without code changes:
+
+- Metrics protection: set `OSCILLINK_METRICS_PROTECTED=1` to require `X-Admin-Secret` header on `GET /metrics`.
+	- Provide the secret via env (e.g., Helm `envFrom` Secret) as `OSCILLINK_ADMIN_SECRET`.
+	- When enabled and the header is missing or mismatched, `/metrics` returns 403.
+- JSON access logs: set `OSCILLINK_JSON_LOGS=1` to emit structured JSON logs for each request.
+	- Control sampling with `OSCILLINK_LOG_SAMPLE` in [0.0, 1.0] (default `1.0`). Example: `OSCILLINK_LOG_SAMPLE=0.1` to log ~10% of requests.
+	- Logs include request id, path, latency (ms), status code, and limited metadata (no bodies).
+
+Container image pinning:
+
+- The licensed container uses a pinned base image `python:3.11.9-slim`.
+- For additional supply-chain hardening, consider pinning by digest in your image registry or Helm values (e.g., `image.digest: sha256:…`).
+- Our CI includes non-blocking SBOM generation, pip-audit, and Trivy scanning; you can make them blocking in your fork by changing the exit code behavior.
+
 Response shape (abridged):
 
 - `state_sig: str` — checksum of lattice state for audit
@@ -709,6 +838,9 @@ Notes:
 - Receipts schema and examples: `docs/RECEIPTS.md`
 - Advanced cloud topics: `docs/CLOUD_ARCH_GCP.md`, `docs/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md`, `docs/FIRESTORE_USAGE_MODEL.md`, `docs/STRIPE_INTEGRATION.md`
 - Observability: `docs/OBSERVABILITY.md` and importable Grafana dashboard at `assets/grafana/oscillink_dashboard.json`
+- Image signing: `docs/IMAGE_SIGNING.md`
+- Operations runbook: `docs/OPERATIONS.md`
+- Networking & egress: `docs/NETWORKING.md`
 - OpenAPI baseline: `openapi_baseline.json`
 - Whitepaper: Oscillink — A Symmetric Positive Definite Lattice for Scalable Working Memory & Hallucination Control (`OscillinkWhitepaper.tex`)
 - Examples: `examples/quickstart.py`, `examples/diffusion_gated.py`
@@ -728,6 +860,15 @@ Notes:
 - Terms of Service: [`docs/TERMS.md`](docs/TERMS.md)
 - Privacy Policy: [`docs/PRIVACY.md`](docs/PRIVACY.md)
 - Data Processing Addendum (DPA): [`docs/DPA.md`](docs/DPA.md)
+
+### Patent and OSS usage (FAQ)
+
+- Does “patent pending” affect my use?
+	- No. Oscillink is open source under Apache‑2.0. You can use, modify, and distribute the software under that license. Apache‑2.0 includes an explicit patent license to practice the Work as contributed. See `LICENSE` for details.
+- Why mention a patent at all?
+	- Transparency and virtual marking. Our filing is primarily defensive—to deter bad‑faith, closed duplications and protect the project’s ability to go to market—not to restrict good‑faith OSS adoption.
+- Can I use Oscillink commercially?
+	- Yes, Apache‑2.0 permits commercial use. Please also review our Terms for brand, cloud, and service usage.
 
 ## Privacy & data handling
 
@@ -767,7 +908,8 @@ Notes:
 	- Ensure the server has `STRIPE_SECRET_KEY` and price→tier mapping configured; see `docs/STRIPE_INTEGRATION.md`
 
 - Redis not used despite being configured
-	- Set `OSCILLINK_STATE_BACKEND=redis` and provide `OSCILLINK_REDIS_URL` (or `REDIS_URL`); see `docs/REDIS_BACKEND.md`
+	- Set `OSCILLINK_STATE_BACKEND=redis` and provide `OSCILLINK_REDIS_URL` (or `REDIS_URL`); see `docs/REDIS_BACKEND.md`.
+	- For CLI pairing sessions specifically, also set `OSCILLINK_CLI_SESSIONS_BACKEND=redis` (see “Redis-backed CLI sessions” above).
 
 ## Error taxonomy (quick reference)
 

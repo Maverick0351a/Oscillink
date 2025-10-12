@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  oscillink:
+    image: ghcr.io/oscillink/oscillink:v0.1.11
+    ports:
+      - "8000:8080"
+    environment:
+      OSCILLINK_LICENSE_PATH: "/run/secrets/oscillink.lic"
+      OSCILLINK_JWKS_URL: "https://license.oscillink.com/.well-known/jwks.json"
+      # Optional JWT verification expectations
+      # OSCILLINK_JWT_ISS: "https://license.oscillink.com"
+      # OSCILLINK_JWT_AUD: "oscillink"
+      # OSCILLINK_JWT_LEEWAY: "300"
+      # OSCILLINK_JWKS_TTL: "3600"
+      # OSCILLINK_JWKS_OFFLINE_GRACE: "86400"
+      OSCILLINK_TELEMETRY: "minimal"
+      OSCILLINK_USAGE_LOG: "/data/usage.jsonl"
+      # Optional: configure flush to your service
+      # OSCILLINK_USAGE_FLUSH_URL: "https://license.oscillink.com/v1/usage/report"
+      # OSCILLINK_LICENSE_ID: "lic_xxx"
+    volumes:
+      - type: bind
+        source: ./license
+        target: /run/secrets
+      - type: bind
+        source: ./data
+        target: /data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s

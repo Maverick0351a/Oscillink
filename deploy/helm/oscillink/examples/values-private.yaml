@@ -1,0 +1,36 @@
+# Values tuned for private clusters with strict egress and no public ingress
+adminSecretRefName: oscillink-admin-env
+
+env:
+  OSCILLINK_LICENSE_REQUIRED: "1"
+  # Optional: force HTTPS redirects (keep default true in prod)
+  OSCILLINK_FORCE_HTTPS: "1"
+
+networkPolicy:
+  enabled: true
+  allowDNS: true
+  # Restrict egress to only JWKS/licensing hosts via CIDR or, preferably, by using an egress gateway and policy
+  egressCIDR: 0.0.0.0/0
+  egressPorts: [443]
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  cpu:
+    enabled: true
+    targetAverageUtilization: 70
+
+# Disable public ingress; use internal LoadBalancer/mesh instead
+ingress:
+  enabled: false
+
+service:
+  type: ClusterIP
+
+# Example: proxy-friendly envs if egress must go via HTTP(S) proxy
+extraEnv:
+  - name: HTTPS_PROXY
+    value: http://your-egress-proxy.internal:3128
+  - name: NO_PROXY
+    value: 127.0.0.1,localhost,.svc,.cluster.local

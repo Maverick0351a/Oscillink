@@ -1,0 +1,13 @@
+# Values to enable outbound proxy usage for JWKS/usage flusher
+adminSecretRefName: oscillink-admin-env
+
+env:
+  OSCILLINK_LICENSE_REQUIRED: "1"
+
+extraEnv:
+  - name: HTTPS_PROXY
+    value: http://your-egress-proxy.internal:3128
+  - name: HTTP_PROXY
+    value: http://your-egress-proxy.internal:3128
+  - name: NO_PROXY
+    value: 127.0.0.1,localhost,.svc,.cluster.local

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: oscillink
+version: 0.1.1
+appVersion: "0.1.12"
+description: Oscillink licensed container (customer-managed)

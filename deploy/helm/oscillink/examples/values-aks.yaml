@@ -1,0 +1,31 @@
+# Example tuned for AKS with nginx ingress
+adminSecretRefName: oscillink-admin-env
+
+env:
+  OSCILLINK_LICENSE_REQUIRED: "1"
+
+networkPolicy:
+  enabled: true
+  allowDNS: true
+  egressCIDR: 0.0.0.0/0
+  egressPorts: [443, 80]
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  cpu:
+    enabled: true
+    targetAverageUtilization: 70
+
+ingress:
+  enabled: true
+  host: oscillink.example.aks
+  className: nginx
+  tls:
+    enabled: true
+    secretName: oscillink-tls

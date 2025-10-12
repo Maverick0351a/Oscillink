@@ -1,0 +1,35 @@
+# Opinionated, security-first defaults
+adminSecretRefName: oscillink-admin-env
+
+env:
+  OSCILLINK_LICENSE_REQUIRED: "1"
+  OSCILLINK_METRICS_PROTECTED: "1"
+  OSCILLINK_JSON_LOGS: "1"
+  OSCILLINK_LOG_SAMPLE: "0.1"
+
+networkPolicy:
+  enabled: true
+  allowDNS: true
+  # Start deny-all egress and explicitly allow only required destinations (JWKS/licensing endpoints)
+  egressCIDR: 0.0.0.0/0
+  egressPorts: [443]
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  cpu:
+    enabled: true
+    targetAverageUtilization: 65
+
+# No public ingress by default
+ingress:
+  enabled: false
+
+# Service only internal by default
+service:
+  type: ClusterIP
