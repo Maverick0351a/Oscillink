@@ -26,6 +26,48 @@ except ImportError:  # pragma: no cover
     sys.exit(1)
 
 
+def _mask(secret: str) -> str:
+    """Return a masked representation of a secret for safe display."""
+    if not secret:
+        return "****"
+    if len(secret) <= 8:
+        return "****"
+    return f"{secret[:4]}…{secret[-4:]}"
+
+
+def _write_env_placeholder(path: str) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n# STRIPE_WEBHOOK_SECRET=<set securely via your secret manager or CI/CD>\n")
+
+
+def _write_env_secret_insecure(path: str, secret: str) -> None:
+    # Explicitly insecure path: user must opt-in
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"\nSTRIPE_WEBHOOK_SECRET={secret}\n")
+
+
+def _store_secret_keyring(wid_or_url: str, secret: str) -> bool:
+    """Best-effort secure storage using system keyring. Returns True on success."""
+    try:
+        import keyring  # type: ignore
+
+        service_name = "oscillink/stripe_webhook"
+        username = f"webhook:{wid_or_url}"
+        keyring.set_password(service_name, username, secret)
+        print(
+            "Stored signing secret in OS keyring under service 'oscillink/stripe_webhook'. "
+            f"Account: {username}"
+        )
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"warn: failed to store secret in keyring: {e}", file=sys.stderr)
+        print(
+            "Tip: install the 'keyring' package to store the secret in your OS keychain "
+            "(avoids clear-text files)."
+        )
+        return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", required=True, help="Public URL to receive webhooks (https)")
@@ -41,8 +83,14 @@ def main() -> int:
         help="Event types to subscribe to",
     )
     ap.add_argument("--api-key", default=None, help="Stripe secret key (overrides env)")
+    ap.add_argument("--output-env", default=None, help="Path to .env to update (safe by default)")
     ap.add_argument(
-        "--output-env", default=None, help="Path to .env to append STRIPE_WEBHOOK_SECRET"
+        "--insecure-append-env",
+        action="store_true",
+        help=(
+            "Append STRIPE_WEBHOOK_SECRET in clear text to --output-env (NOT recommended). "
+            "Use this only in ephemeral local dev and rotate keys afterwards."
+        ),
     )
     args = ap.parse_args()
 
@@ -73,17 +121,31 @@ def main() -> int:
     print("Created Webhook Endpoint:")
     print(f"  id: {wid}")
     if secret:
-        print(f"  signing secret: {secret}")
+        print(f"  signing secret (masked): {_mask(secret)}")
+        print(
+            "  Note: Stripe only returns the full secret once. Retrieve it securely from the Stripe Dashboard if needed."
+        )
     else:
         print("  signing secret: <not returned by API; copy from Stripe Dashboard>")
 
-    if args.output_env and secret:
+    if args.output_env:
         try:
-            with open(args.output_env, "a", encoding="utf-8") as f:
-                f.write(f"\nSTRIPE_WEBHOOK_SECRET={secret}\n")
-            print(f"Appended STRIPE_WEBHOOK_SECRET to {args.output_env}")
+            if args.insecure_append_env and secret:
+                _write_env_secret_insecure(args.output_env, secret)
+                print(
+                    f"Appended STRIPE_WEBHOOK_SECRET to {args.output_env} (insecure). "
+                    "Consider rotating this secret and switching to a secret manager."
+                )
+            else:
+                _write_env_placeholder(args.output_env)
+                print(
+                    f"Wrote placeholder STRIPE_WEBHOOK_SECRET to {args.output_env} (not storing secret in clear text)."
+                )
         except Exception as e:  # noqa: BLE001
             print(f"warn: failed to write {args.output_env}: {e}", file=sys.stderr)
+
+    if secret:
+        _store_secret_keyring(wid or args.url, secret)
 
     return 0
 
