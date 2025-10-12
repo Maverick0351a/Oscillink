@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/ops/OPERATIONS.md](./ops/OPERATIONS.md)
 # Operations runbook (self-hosted/licensed)
 
 This runbook summarizes the high-signal, low-noise operational knobs for Oscillink in production.
@@ -40,7 +43,7 @@ This runbook summarizes the high-signal, low-noise operational knobs for Oscilli
 
 ## Supply chain
 - Base image pinned to python:3.11.9-slim; consider digest pinning in Helm values
-- Image signing with cosign: see `docs/IMAGE_SIGNING.md`
+- Image signing with cosign: see `docs/ops/IMAGE_SIGNING.md`
 - CI includes pip-audit, SBOM (Syft), and Trivy; make blocking in your fork as desired
 
 ## Troubleshooting quick checks

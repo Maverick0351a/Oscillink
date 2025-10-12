@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/ops/PROD_READINESS_CHECKLIST.md](./ops/PROD_READINESS_CHECKLIST.md)
 # Production Readiness Checklist
 
 > Status legend: [ ] pending · [~] in progress · [x] complete

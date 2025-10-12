@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/cloud/FIRESTORE_USAGE_MODEL.md](./cloud/FIRESTORE_USAGE_MODEL.md)
 # Firestore Usage & Key Model (Draft)
 
 Status: Draft (Should). Iteration expected once Stripe product IDs finalized.

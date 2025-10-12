@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/guides/MIGRATION_FROM_RAG.md](./guides/MIGRATION_FROM_RAG.md)
 # Migrating from RAG to Oscillink
 
 This guide helps you transition from traditional RAG (Retrieval-Augmented Generation) pipelines to Oscillink's coherent memory system.

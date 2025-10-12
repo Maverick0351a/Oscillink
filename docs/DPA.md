@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/billing/DPA.md](./billing/DPA.md)
 # Data Processing Addendum (Template)
 
 This DPA applies when Oscillink processes personal data on your behalf via the Cloud API. It is a template for evaluation and does not constitute legal advice.

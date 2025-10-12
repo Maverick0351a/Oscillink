@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/foundations/HALLUCINATION_PROOF.md](./foundations/HALLUCINATION_PROOF.md)
 # Hallucination Suppression — Reproducible Proof Harness
 
 This document explains the small, reproducible harness that demonstrates controllable hallucination suppression using Oscillink Lattice gates.

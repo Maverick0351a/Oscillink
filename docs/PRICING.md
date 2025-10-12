@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/billing/PRICING.md](./billing/PRICING.md)
 # Licensed Container Pricing (Launch Proposal)
 
 This proposal balances early traction with enterprise credibility and keeps packaging simple (per-container licensing).

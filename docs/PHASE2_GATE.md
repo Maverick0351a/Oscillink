@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/ops/PHASE2_GATE.md](./ops/PHASE2_GATE.md)
 # Phase 2 Gating Criteria
 
 This document defines the readiness gate for advancing from Phase 1 (foundational lattice + governance primitives) to Phase 2 (expanded functionality, multi-process scaling, richer analytics).

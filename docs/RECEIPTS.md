@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/reference/RECEIPTS.md](./reference/RECEIPTS.md)
 # Receipts Schema (JSON)
 
 Top-level fields:

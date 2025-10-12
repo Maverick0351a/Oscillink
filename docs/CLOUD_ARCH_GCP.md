@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/cloud/CLOUD_ARCH_GCP.md](./cloud/CLOUD_ARCH_GCP.md)
 # Cloud Architecture (GCP Draft)
 
 Status: Draft (Should) – informs Phase 2 hardening & commercialization.

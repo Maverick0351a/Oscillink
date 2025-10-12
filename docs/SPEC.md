@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/foundations/SPEC.md](./foundations/SPEC.md)
 # Oscillink Lattice — Math Spec (Phase 1)
 
 **Energy (per lattice)**

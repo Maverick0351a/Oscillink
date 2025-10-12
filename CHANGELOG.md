@@ -17,7 +17,7 @@
 - Helm operator presets and examples: GKE/EKS/AKS values, security-first preset, private/proxy and ingress privacy overlays.
 - cert-manager samples (ClusterIssuer/Certificate) and controller-specific variants.
 - Licensed-container ops: metrics protection (`OSCILLINK_METRICS_PROTECTED`), JSON access logs (`OSCILLINK_JSON_LOGS`, `OSCILLINK_LOG_SAMPLE`).
-- Operator docs: `docs/OPERATIONS.md`, `docs/IMAGE_SIGNING.md`, `docs/NETWORKING.md`.
+- Operator docs: `docs/ops/OPERATIONS.md`, `docs/ops/IMAGE_SIGNING.md`, `docs/ops/NETWORKING.md`.
 - Supply chain CI: SBOM (Syft), Trivy scan (non-blocking), and nightly pip-audit; CodeQL retained.
 
 ### Changed
@@ -34,7 +34,7 @@
 
 ### Added
 - Security scans: CodeQL workflow and nightly `pip-audit` job.
-- Legal/commercial docs: Terms (docs/TERMS.md), Privacy (docs/PRIVACY.md), DPA template (docs/DPA.md); linked from README and project URLs.
+- Legal/commercial docs: Terms (docs/product/TERMS.md), Privacy (docs/product/PRIVACY.md), DPA template (docs/billing/DPA.md); linked from README and project URLs.
 - README: Production stability/deprecation policy and Cloud beta status/SLO notes.
 
 ### Removed

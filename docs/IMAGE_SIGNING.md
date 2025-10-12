@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/ops/IMAGE_SIGNING.md](./ops/IMAGE_SIGNING.md)
 # Image signing and digest pinning
 
 This guide shows how to sign your container images with Sigstore cosign and pin images by digest for stronger supply-chain guarantees.

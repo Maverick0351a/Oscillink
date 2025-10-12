@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/guides/ROADMAP.md](./guides/ROADMAP.md)
 # Roadmap
 
 This roadmap outlines near‑term developer tooling and platform work (Phase 2) and forward‑looking research and networking directions (Phase 3). Phase 1 milestones (SDK core) are complete and tracked in CHANGELOG.

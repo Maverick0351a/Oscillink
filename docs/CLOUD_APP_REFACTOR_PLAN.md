@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/cloud/CLOUD_APP_REFACTOR_PLAN.md](./cloud/CLOUD_APP_REFACTOR_PLAN.md)
 # Cloud app modularization plan
 
 ## Goals
