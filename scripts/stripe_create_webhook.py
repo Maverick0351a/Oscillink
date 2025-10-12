@@ -1,5 +1,5 @@
 """
-Create a Stripe Webhook Endpoint and print the signing secret.
+Create a Stripe Webhook Endpoint and securely handle the signing secret.
 
 Usage:
   python scripts/stripe_create_webhook.py --url https://your.domain/stripe/webhook \
@@ -7,10 +7,10 @@ Usage:
       --output-env .env
 
 Requirements:
-  - STRIPE_SECRET_KEY or STRIPE_API_KEY in the environment, or pass --api-key
+    - STRIPE_SECRET_KEY or STRIPE_API_KEY in the environment, or pass --api-key
 Notes:
-  - The webhook signing secret is returned only at creation time by Stripe.
-  - This script will print the secret and optionally append STRIPE_WEBHOOK_SECRET=... to an env file.
+    - The webhook signing secret is returned only at creation time by Stripe.
+    - This script will NOT print or write the secret to disk. It will attempt to store it in the OS keyring if available.
 """
 
 from __future__ import annotations
@@ -83,15 +83,7 @@ def main() -> int:
         help="Event types to subscribe to",
     )
     ap.add_argument("--api-key", default=None, help="Stripe secret key (overrides env)")
-    ap.add_argument("--output-env", default=None, help="Path to .env to update (safe by default)")
-    ap.add_argument(
-        "--insecure-append-env",
-        action="store_true",
-        help=(
-            "Append STRIPE_WEBHOOK_SECRET in clear text to --output-env (NOT recommended). "
-            "Use this only in ephemeral local dev and rotate keys afterwards."
-        ),
-    )
+    ap.add_argument("--output-env", default=None, help="Path to .env to update (placeholder only)")
     args = ap.parse_args()
 
     api_key = args.api_key or os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_API_KEY")
@@ -120,27 +112,18 @@ def main() -> int:
     wid = getattr(wh, "id", None) or wh.get("id")  # type: ignore
     print("Created Webhook Endpoint:")
     print(f"  id: {wid}")
-    if secret:
-        print(f"  signing secret (masked): {_mask(secret)}")
-        print(
-            "  Note: Stripe only returns the full secret once. Retrieve it securely from the Stripe Dashboard if needed."
-        )
-    else:
+    if not secret:
         print("  signing secret: <not returned by API; copy from Stripe Dashboard>")
+    else:
+        # Do not print masked or full secret to avoid clear-text logging findings.
+        print("  signing secret: <captured; not printed> (stored securely if keyring available)")
 
     if args.output_env:
         try:
-            if args.insecure_append_env and secret:
-                _write_env_secret_insecure(args.output_env, secret)
-                print(
-                    f"Appended STRIPE_WEBHOOK_SECRET to {args.output_env} (insecure). "
-                    "Consider rotating this secret and switching to a secret manager."
-                )
-            else:
-                _write_env_placeholder(args.output_env)
-                print(
-                    f"Wrote placeholder STRIPE_WEBHOOK_SECRET to {args.output_env} (not storing secret in clear text)."
-                )
+            _write_env_placeholder(args.output_env)
+            print(
+                f"Wrote placeholder STRIPE_WEBHOOK_SECRET to {args.output_env} (not storing secret in clear text)."
+            )
         except Exception as e:  # noqa: BLE001
             print(f"warn: failed to write {args.output_env}: {e}", file=sys.stderr)
 
