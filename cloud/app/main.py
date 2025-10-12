@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 # Standard library
+import json
+import logging
 import os
+import random
 import time
 import uuid
 from typing import Any
 
 # Third-party
 import numpy as np
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, ORJSONResponse
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -19,24 +21,18 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from oscillink import OscillinkLattice, __version__
 
 # Local application imports
-from .admin import router as admin_router
-from .autocorrect import router as autocorrect_router
-from .benchmarks import router as benchmarks_router
 from .billing import (
     current_period,
     get_price_map,
     tier_info,
 )
-from .billing_webhook import router as billing_webhook_router
 from .config import get_settings
+from .factory import create_app
 from .features import resolve_features
-from .jobs import router as jobs_router
 from .keystore import InMemoryKeyStore, KeyMetadata, get_keystore  # type: ignore
 from .learners import propose_overrides, record_observation
 from .models import HealthResponse, ReceiptResponse, SettleRequest
@@ -64,40 +60,17 @@ from .services.cache import (
 from .services.events import webhook_get_persistent, webhook_store_persistent
 from .services.usage_log import append_usage as _append_usage
 from .services.webhook_mem import get_webhook_events_mem
+from .settings import get_app_settings
 
-app = FastAPI(title="Oscillink Cloud API", default_response_class=ORJSONResponse)
+app = create_app()
 
-# --- Security & Ops Middlewares (configurable via env) ---
-_ALLOW_ORIGINS = os.getenv("OSCILLINK_CORS_ALLOW_ORIGINS", "").strip()
-_TRUSTED_HOSTS = os.getenv(
-    "OSCILLINK_TRUSTED_HOSTS", ""
-).strip()  # e.g. "api.example.com,.example.com"
-_FORCE_HTTPS = os.getenv("OSCILLINK_FORCE_HTTPS", "0") in {"1", "true", "TRUE", "on"}
+s = get_app_settings()
 
-if _ALLOW_ORIGINS:
-    origins = [o.strip() for o in _ALLOW_ORIGINS.split(",") if o.strip()]
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=False,
-        allow_methods=["POST", "GET", "OPTIONS", "DELETE"],
-        allow_headers=["*"],
-        max_age=600,
-    )
-if _TRUSTED_HOSTS:
-    hosts = [h.strip() for h in _TRUSTED_HOSTS.split(",") if h.strip()]
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
-if _FORCE_HTTPS:
-    app.add_middleware(HTTPSRedirectMiddleware)
+MAX_BODY_BYTES = int(s.max_body_bytes)  # 1MB default
 
-# Optional routers
-app.include_router(autocorrect_router)
-app.include_router(benchmarks_router)
-app.include_router(billing_webhook_router)
-app.include_router(jobs_router)
-app.include_router(admin_router)
 
-MAX_BODY_BYTES = int(os.getenv("OSCILLINK_MAX_BODY_BYTES", "1048576"))  # 1MB default
+def _truthy(val: str | None) -> bool:
+    return val in {"1", "true", "TRUE", "on", "On", "yes", "YES"}
 
 
 @app.middleware("http")
@@ -271,50 +244,80 @@ def _update_monthly_usage_doc(
         pass
 
 
-def _check_monthly_cap(key: str | None, units: int):
-    """Enforce per-tier monthly unit caps (best-effort in-memory).
+def _monthly_cap_from_env() -> int:
+    try:
+        return int(os.getenv("OSCILLINK_MONTHLY_CAP", "0"))
+    except ValueError:
+        return 0
 
-    Returns a dict describing monthly usage context or None when unlimited.
+
+def _resolve_monthly_cap(meta: KeyMetadata | None) -> int:
+    """Return effective monthly cap in units for a key metadata.
+
+    Env override (OSCILLINK_MONTHLY_CAP>0) takes precedence; 0/invalid means use tier default.
+    Returns 0 when unlimited/disabled.
+    """
+    if not meta:
+        return 0
+    cap_env = _monthly_cap_from_env()
+    if cap_env > 0:
+        return cap_env
+    try:
+        return int(tier_info(meta.tier).monthly_unit_cap)  # type: ignore[arg-type]
+    except Exception:
+        return 0
+
+
+def _get_monthly_rec(key: str, period: str) -> dict[str, int | str]:
+    """Get or initialize the per-key monthly usage record for the given period."""
+    rec = _monthly_usage.get(key)
+    if rec and rec.get("period") == period:
+        return rec
+    used_val = 0
+    if _MONTHLY_USAGE_COLLECTION:
+        persisted = _load_monthly_usage_doc(key, period)
+        if persisted and isinstance(persisted.get("used"), (int, float)):
+            used_val = int(persisted.get("used", 0))
+    rec = {"period": period, "used": used_val}
+    _monthly_usage[key] = rec  # type: ignore[index]
+    return rec
+
+
+def _check_monthly_cap(key: str | None, units: int):
+    """Enforce monthly unit caps; return usage context or None when unlimited.
+
     Raises HTTPException(429/413) when exceeding caps.
     """
     if key is None:
         return None
-    meta: KeyMetadata | None = get_keystore().get(key)
-    if not meta:
+    meta = get_keystore().get(key)
+    cap = _resolve_monthly_cap(meta)
+    if cap <= 0:
         return None
-    tinfo = tier_info(meta.tier)
-    cap = tinfo.monthly_unit_cap
-    if cap is None or cap <= 0:
-        return None
+
     period = current_period()
-    rec = _monthly_usage.get(key)
-    if not rec or rec.get("period") != period:
-        # Attempt to hydrate from persistent store
-        used_val = 0
-        if _MONTHLY_USAGE_COLLECTION:
-            persisted = _load_monthly_usage_doc(key, period)
-            if persisted and isinstance(persisted.get("used"), (int, float)):
-                used_val = int(persisted.get("used", 0))
-        rec = {"period": period, "used": used_val}
-        _monthly_usage[key] = rec  # type: ignore
+    rec = _get_monthly_rec(key, period)
     used = int(rec.get("used", 0))
+
     if units > cap:
         raise HTTPException(
             status_code=413, detail=f"request units {units} exceed monthly cap {cap}"
         )
+
     if used + units > cap:
         remaining = max(cap - used, 0)
+        headers = {"X-MonthCap-Limit": str(cap), "X-MonthCap-Remaining": str(remaining)}
         raise HTTPException(
             status_code=429,
             detail=f"monthly cap exceeded (cap={cap}, used={used})",
-            headers={"X-MonthCap-Limit": str(cap), "X-MonthCap-Remaining": str(remaining)},
+            headers=headers,
         )
-    new_used = used + units
-    rec["used"] = new_used  # type: ignore
-    # Best-effort persistence (async not required; cheap write) - ignore failures silently
+
+    rec["used"] = used + units  # type: ignore[index]
     if _MONTHLY_USAGE_COLLECTION:
-        _update_monthly_usage_doc(key, period, new_used)
-    return {"limit": cap, "used": rec["used"], "remaining": cap - rec["used"], "period": period}
+        _update_monthly_usage_doc(key, period, int(rec["used"]))  # type: ignore[index]
+    remaining = cap - int(rec["used"])  # type: ignore[index]
+    return {"limit": cap, "used": int(rec["used"]), "remaining": remaining, "period": period}
 
 
 def _check_and_consume_quota(key: str | None, units: int) -> tuple[int, int, float]:
@@ -400,6 +403,52 @@ async def add_security_headers(request: Request, call_next):
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
     resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
     return resp
+
+
+@app.middleware("http")
+async def json_access_log_mw(request: Request, call_next):
+    """Optional structured JSON access log with sampling.
+
+    Enable with OSCILLINK_JSON_LOGS=1 and configure sample via OSCILLINK_LOG_SAMPLE (0.0..1.0).
+    Defaults to disabled. Avoids logging bodies; focuses on request/response metadata only.
+    """
+    if not _truthy(os.getenv("OSCILLINK_JSON_LOGS")):
+        return await call_next(request)
+    try:
+        sample = float(os.getenv("OSCILLINK_LOG_SAMPLE", "1"))
+    except ValueError:
+        sample = 1.0
+    t0 = time.time()
+    try:
+        response = await call_next(request)
+        status = int(getattr(response, "status_code", 200))
+    except Exception:
+        status = 500
+        # still log the exception pathway; re-raise
+        raise
+    finally:
+        if random.random() <= max(0.0, min(sample, 1.0)):
+            rid = request.headers.get(REQUEST_ID_HEADER, "")
+            client_ip = _client_ip(
+                request, os.getenv("OSCILLINK_TRUST_XFF", "0") in {"1", "true", "TRUE", "on"}
+            )
+            rec = {
+                "ts": time.time(),
+                "level": "info",
+                "event": "access",
+                "method": request.method,
+                "path": request.url.path,
+                "status": status,
+                "duration_ms": int(1000.0 * (time.time() - t0)),
+                "request_id": rid,
+                "ip": client_ip,
+            }
+            try:
+                logging.getLogger("oscillink").info(json.dumps(rec))
+            except Exception:
+                # best-effort: fallback to stdout
+                print(json.dumps(rec))
+    return response
 
 
 # ---------------- Per-IP Rate Limiting (in-memory) -----------------
@@ -786,6 +835,53 @@ def _check_diffusion_allowed(req: SettleRequest, feats) -> None:
 @app.get("/health", response_model=HealthResponse)
 def health():
     return HealthResponse(status="ok", version=__version__)
+
+
+@app.get("/license/status")
+def license_status():
+    """Report licensed-container status based on exported entitlements.
+
+    Behavior:
+    - Reads entitlements JSON written by entrypoint verifier.
+    - Returns {status: ok, exp, iss, sub, tier} if present and not expired.
+    - If expired or missing:
+      - When OSCILLINK_LICENSE_REQUIRED=1|true|on, return 503 to fail readiness.
+      - Otherwise return 200 with status "stale" or "unknown".
+    """
+    ent_path = os.getenv("OSCILLINK_ENTITLEMENTS_PATH", "/run/oscillink_entitlements.json")
+    leeway = 0
+    try:
+        leeway = int(os.getenv("OSCILLINK_JWT_LEEWAY", "300"))
+    except ValueError:
+        leeway = 300
+    require = os.getenv("OSCILLINK_LICENSE_REQUIRED", "0").lower() in {"1", "true", "on"}
+    try:
+        with open(ent_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        if require:
+            return ORJSONResponse(status_code=503, content={"status": "unlicensed"})
+        return ORJSONResponse({"status": "unknown"})
+    exp = None
+    try:
+        if isinstance(data.get("exp"), (int, float)):
+            exp = int(data.get("exp"))
+    except Exception:
+        exp = None
+    now = int(time.time())
+    if exp is not None and (now - leeway) > exp:
+        if require:
+            return ORJSONResponse(status_code=503, content={"status": "expired", "exp": exp})
+        return ORJSONResponse({"status": "stale", "exp": exp})
+    return ORJSONResponse(
+        {
+            "status": "ok",
+            "iss": data.get("iss"),
+            "sub": data.get("sub") or data.get("license_id"),
+            "tier": data.get("tier"),
+            "exp": exp,
+        }
+    )
 
 
 def _build_lattice(
@@ -1374,7 +1470,12 @@ def chain_receipt(
 
 
 @app.get("/metrics")
-def metrics():
+def metrics(request: Request, x_admin_secret: str | None = Header(default=None)):
+    # Optional protection: require admin secret for metrics only when enabled AND a secret is set
+    if _truthy(os.getenv("OSCILLINK_METRICS_PROTECTED", "0")):
+        required = os.getenv("OSCILLINK_ADMIN_SECRET")
+        if required and x_admin_secret != required:
+            return ORJSONResponse(status_code=403, content={"detail": "forbidden"})
     data = generate_latest()  # type: ignore
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 

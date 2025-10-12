@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oscillink.fullname" . }}
+  labels:
+    app: {{ include "oscillink.name" . }}
+    chart: {{ include "oscillink.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "oscillink.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "oscillink.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+      - name: oscillink
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        {{- if .Values.adminSecretRefName }}
+        - secretRef:
+            name: {{ .Values.adminSecretRefName }}
+        {{- end }}
+        readinessProbe:
+          httpGet:
+            path: /license/status
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          runAsGroup: 10001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        env:
+        {{- range $k, $v in .Values.env }}
+        - name: {{ $k }}
+          value: "{{ $v }}"
+        {{- end }}
+        volumeMounts:
+        - name: run-tmp
+          mountPath: /run
+          readOnly: false
+        - name: license
+          mountPath: /run/secrets
+          readOnly: true
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+      volumes:
+      - name: run-tmp
+        emptyDir:
+          medium: Memory
+      - name: license
+        secret:
+          secretName: {{ (index .Values.secretMounts 0).secretName }}

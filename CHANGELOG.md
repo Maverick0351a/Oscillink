@@ -1,6 +1,29 @@
 # [0.1.9] - 2025-10-10
 # [0.1.9] - 2025-10-10
 ## [Unreleased]
+## [0.1.12] - 2025-10-11
+### Added
+- Production-ready licensed-container operator suite: metrics protection, JSON access logs, security presets, TLS samples, networking guide, and signing guidance.
+### Changed
+- Bumped SDK to 0.1.12; Helm appVersion updated and default image tag set to v0.1.12.
+### Notes
+- To publish to PyPI: create a GitHub Release with tag `v0.1.12` (workflow `.github/workflows/publish.yml`).
+
+### Added
+- Helm operator presets and examples: GKE/EKS/AKS values, security-first preset, private/proxy and ingress privacy overlays.
+- cert-manager samples (ClusterIssuer/Certificate) and controller-specific variants.
+- Licensed-container ops: metrics protection (`OSCILLINK_METRICS_PROTECTED`), JSON access logs (`OSCILLINK_JSON_LOGS`, `OSCILLINK_LOG_SAMPLE`).
+- Operator docs: `docs/OPERATIONS.md`, `docs/IMAGE_SIGNING.md`, `docs/NETWORKING.md`.
+- Supply chain CI: SBOM (Syft), Trivy scan (non-blocking), and nightly pip-audit; CodeQL retained.
+
+### Changed
+- Pinned licensed Docker base image to `python:3.11.9-slim` and documented digest pinning.
+- Helm chart bumped to 0.1.1 and README linked new operator docs.
+### Changed
+- Dropped Python 3.9 support; project now supports Python 3.10–3.12 only.
+
+### Removed
+- Experimental OLF prototype and related artifacts under `experiments/` to avoid confusion and coverage noise.
 ### Changed
 - NumPy policy aligned: support 1.22–<3.0 (1.x and 2.x). Updated pyproject and README.
 - CI expanded to Python 3.9–3.12 × NumPy 1.x/2.x matrix; retains ruff+mypy and perf checks.

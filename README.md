@@ -1,33 +1,68 @@
-# Oscillink: Self‑Optimizing Physics-Based Memory System
+# Oscillink — Self‑Optimizing Memory for Generative Models and Databases
 
-**Physics‑based coherence system that improves with use. Latency drops as your dataset grows. Hallucinations reduced. Every decision signed and deterministic.**
+Build coherence into retrieval and generation. Deterministic receipts for every decision. Latency that scales gracefully with corpus size.
 
-
-
-<p>
+<p align="left">
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg"/></a>
+	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/codeql.yml/badge.svg"/></a>
+	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/pip-audit.yml"><img alt="pip-audit" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/pip-audit.yml/badge.svg"/></a>
 	<a href="https://app.codecov.io/gh/Maverick0351a/Oscillink/tree/main"><img alt="Coverage" src="https://codecov.io/gh/Maverick0351a/Oscillink/branch/main/graph/badge.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
+	<a href="PATENTS.md"><img alt="Patent pending" src="https://img.shields.io/badge/Patent-pending-blueviolet.svg"/></a>
+	<br/>
+	<sub>CI: Python 3.10–3.12 × NumPy 1.x/2.x</sub>
+
 </p>
-
-<sub>CI matrix: Python 3.9–3.12 × NumPy 1.x and 2.x</sub>
-
-<sub>Patent pending: U.S. Provisional 63/897,572 (filed 2025‑10‑11). See <a href="PATENTS.md">PATENTS.md</a>.</sub>
 
 Setup: synthetic “facts + traps” dataset — see the notebook for N, k, trials, seed. Reproducible via `notebooks/04_hallucination_reduction.ipynb`. Traps flagged; gate=0.01, off‑topic damp=0.5.
 
-- ⚡ Inverse scaling: latency often decreases as corpus size grows (<40 ms at N≈1200 CPU). For fixed D, k, and CG tol, settle tends to stay ~constant or improve with denser graphs. [scaling chart](assets/benchmarks/scale_timing.png) · [run](scripts/scale_benchmark.py)
-- 🎯 Hallucinations: 42.9% → 0% in a controlled study[1]. See the notebook (N, k, trials, seed). [study](notebooks/04_hallucination_reduction.ipynb) · [CLI sample](assets/benchmarks/competitor_single.png) · [run](scripts/competitor_benchmark.py)
+- ⚡ Latency scales smoothly: with fixed D, k, and CG tol, settle tends to remain stable with denser graphs. Reference E2E < 40 ms at N≈1200 on a laptop CPU.
+- 🎯 Hallucination control: in our controlled study[1], Oscillink reduced trap selections while maintaining competitive F1. See the notebook for setup and reproduction.
 - 🧾 Receipts: SHA‑256 state signature; optional HMAC‑SHA256. [schema](docs/RECEIPTS.md)
 - 🔧 Universal: works with any embeddings, no retraining. [adapters](#adapters--model-compatibility) · [quickstart](examples/quickstart.py)
 - 📈 Self‑optimizing: learns parameters over time. [adaptive suite](scripts/bench_adaptive_suite.py)
-- 🚀 Production: scales to millions. [perf snapshot](scripts/perf_snapshot.py) · [scale](scripts/scale_benchmark.py)
+- 🚀 Production: scales to millions. See scripts under `scripts/` for reproducible benchmarks.
 
 <p>
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 </p>
+
+## Use Oscillink: SDK or Licensed Container
+
+- SDK (pip): Keep everything local. Best for adding coherence directly inside your application process. Start at [Install](#install) and [60‑second SDK quickstart](#60-second-sdk-quickstart).
+- Licensed Container (customer‑managed): Run the API entirely inside your VPC or cluster with license‑based entitlements. Jump to [Licensed Container (customer‑managed)](#licensed-container-customer-managed). Operators can then dive into [Operations](docs/OPERATIONS.md) and [Networking](docs/NETWORKING.md).
+
+### Table of contents
+
+- [TL;DR](#tldr)
+- [Quickstart](#quickstart)
+- [Adapters & model compatibility](#adapters--model-compatibility)
+- [Licensed Container (customer-managed)](#licensed-container-customer-managed)
+- [Cloud API (beta)](#option-b-cloud-api-beta)
+- [Proven Results](#proven-results)
+- [Performance](#performance-sdk-reference)
+- [How It Works](#how-it-works-technical)
+- [Install](#install)
+- [Run the server](#run-the-server-operators)
+- [Use the Cloud](#use-the-cloud)
+- [Docs & examples](#docs--examples)
+- [Troubleshooting](#troubleshooting-cloud)
+- [Pricing (licensed container)](#pricing-licensed-container)
+
+### SDK at a glance
+
+```python
+from oscillink import Oscillink
+
+# Y: (N, D) document embeddings; psi: (D,) query embedding (float32 recommended)
+lattice = Oscillink(Y, kneighbors=6)
+lattice.set_query(psi)
+lattice.settle()
+topk = lattice.bundle(k=5)  # coherent results
+receipts = lattice.receipt()  # deterministic audit (energy breakdown)
+```
 
 ### Quick install (60 seconds)
 
@@ -44,35 +79,23 @@ print(lat.bundle(k=5)); print(lat.receipt()['deltaH_total'])
 PY
 ```
 
-> Cloud Beta ($19, limited seats): hosted settle + signed receipts. Join from your terminal in ~60s:
->
-> ```powershell
-> oscillink signup --wait
-> $env:OSCILLINK_API_BASE = "https://api2.odinprotocol.dev"
-> ```
 
 
-
-
-### Try it now (30 seconds, Windows PowerShell)
+### Quick checks (Windows PowerShell)
 
 ```powershell
-# 1) Competitor chart (cosine vs Oscillink) — saves PNG under assets\benchmarks
+# Compare cosine baseline vs Oscillink; writes JSON summary (no plotting)
 python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json --out benchmarks\competitor_sample.json
-python scripts/plot_benchmarks.py --competitor benchmarks\competitor_sample.json --out-dir assets\benchmarks
 
-# 2) Scaling chart — saves PNG under assets\benchmarks
+# Scaling harness; emits JSONL suitable for analysis
 python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
-python scripts/plot_benchmarks.py --scale benchmarks\scale.jsonl --out-dir assets\benchmarks
 ```
 
 With fixed D=64, k=6, tol=1e-3 and Jacobi preconditioning, CG converges in ~3–4 iterations; E2E time trends sublinear in practice with improved connectivity at larger N. Laptop ref: 3.5 GHz i7, Python 3.11, NumPy MKL/Accelerate.
 
-<p align="center">
-	<img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/>
-</p>
+<p align="center"><img alt="Oscillink" src="assets/oscillink_hero.png" width="640"/></p>
 
-<p align="center"><i>Current: v0.1.11 • API v1 • Cloud: beta</i></p>
+<p align="center"><i>Current: v0.1.12 • API v1 • Cloud: beta</i></p>
 
 ---
 
@@ -182,6 +205,9 @@ response = httpx.post(
 
 result = response.json()
 coherent_context = result["bundle"]  # Coherent, not just similar
+audit_trail = result["receipt"]  # Deterministic proof
+```
+
 ## Cloud feature flags and headers (beta)
 
 These toggles are off by default and safe to enable gradually. They only affect the cloud server.
@@ -198,23 +224,15 @@ These toggles are off by default and safe to enable gradually. They only affect 
 	- Per-key capacity: `OSCILLINK_CACHE_CAP` (default `128`)
 	- `/bundle` responses include `X-Cache: HIT|MISS`; on HIT also `X-Cache-Hits` and `X-Cache-Age`.
 
-audit_trail = result["receipt"]  # Deterministic proof
-```
 
 ---
 
 ## Proven Results
 
 ### 🎯 Reduced hallucinations (developer‑verifiable)
-- On the included sample dataset, Oscillink reduced trap selections (lower trap share in top‑k) compared to a cosine baseline while maintaining competitive F1. See the chart below and reproduce with one command.
+- On the included sample dataset, Oscillink reduced trap selections compared to a cosine baseline while maintaining competitive F1. Reproduce with one command and inspect the JSON output.
 
-<p align="center">
-    <img alt="Competitor vs Oscillink (F1, latency, traps %)" src="assets/benchmarks/competitor_single.png" width="720"/>
-	<br/>
-	<sub>Generated by scripts/plot_benchmarks.py from scripts/competitor_benchmark.py output (trap share when available)</sub>
-</p>
-
-Reproduce (Windows PowerShell):
+Reproduce (Windows PowerShell) — JSON only:
 
 ```powershell
 python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json --out benchmarks\competitor_sample.json
@@ -230,24 +248,14 @@ python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.js
 python scripts/plot_benchmarks.py --competitor benchmarks\competitor_multi.json --out-dir assets\benchmarks
 ```
 
-<p align="center">
-	<img alt="Aggregated competitor vs Oscillink (F1, latency, traps %; mean ± 95% CI)" src="assets/benchmarks/competitor_multi.png" width="720"/>
-	<br/>
-	<sub>Generated by scripts/plot_benchmarks.py from scripts/competitor_benchmark.py output (trap share when available)</sub>
-</p>
+<!-- Image plots removed -->
 
 ### ⚡ Performance benchmarks and scaling
 
 - End‑to‑end latency typically under 40 ms at N≈1200 on a laptop (Python 3.11), with “light” receipts. Graph build and solve times scale smoothly with N.
-- Our scaling harness emits JSONL so you can plot your own curves. Example chart below shows mean timings vs N.
+- The scaling harness emits JSONL so you can analyze timings on your hardware (no plotting required).
 
-<p align="center">
-	<img alt="Scaling curves" src="assets/benchmarks/scale_timing.png" width="720"/>
-	<br/>
-	<sub>Generated by scripts/plot_benchmarks.py from scripts/scale_benchmark.py output</sub>
-	</p>
-
-Reproduce on your machine and plot:
+Reproduce on your machine (JSONL only):
 
 ```powershell
 python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
@@ -667,6 +675,124 @@ r.raise_for_status()
 print(r.json())
 ```
 
+## Licensed Container (customer-managed)
+
+If you prefer to run Oscillink entirely inside your VPC and only send minimal license/usage heartbeats, use the licensed container. No embeddings or content ever leave your network.
+
+What you get:
+- Entitlements and feature gating via a signed JWT license (Ed25519)
+- Local enforcement of caps (nodes, dim, monthly units) and QPS
+- Optional minimal telemetry: aggregated counters only
+
+Quickstart (Docker):
+- Create a folder `deploy\license` and place your license file `oscillink.lic` (JWT) inside.
+- Run `docker-compose -f deploy/docker-compose.yml up -d`.
+- The API will be available on http://localhost:8000 (health at `/health`).
+
+Windows one‑liner (PowerShell):
+
+```powershell
+docker compose -f deploy\docker-compose.yml up -d
+```
+
+Linux/macOS one‑liner (bash/zsh):
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+Notes:
+- Ensure the directories exist before starting (they’re mounted by the compose file):
+
+	```bash
+	mkdir -p deploy/license deploy/data
+	# Place your license at deploy/license/oscillink.lic
+	```
+
+- If your environment uses the legacy Docker Compose standalone binary, replace `docker compose` with `docker-compose`.
+
+Required environment variables (container):
+- `OSCILLINK_LICENSE_PATH` — path to the mounted license file (default in our compose: `/run/secrets/oscillink.lic`)
+- `OSCILLINK_JWKS_URL` — URL to your license service JWKS (e.g., `https://license.oscillink.com/.well-known/jwks.json`)
+
+Optional (telemetry/usage):
+- `OSCILLINK_TELEMETRY` — set to `minimal` for aggregated counters only (default in compose)
+- `OSCILLINK_USAGE_LOG` — local JSONL path to append usage counters (e.g., `/data/usage.jsonl`)
+- `OSCILLINK_USAGE_FLUSH_URL` — if set, background flusher posts batches to this URL
+- `OSCILLINK_LICENSE_ID` — identifier included in usage reports
+
+Optional (JWT verification tuning):
+- `OSCILLINK_JWT_ISS` — expected issuer (iss) to enforce
+- `OSCILLINK_JWT_AUD` — expected audience (aud) to enforce
+- `OSCILLINK_JWT_LEEWAY` — seconds of clock skew allowance (default 300)
+- `OSCILLINK_JWKS_TTL` — JWKS cache TTL seconds (default 3600)
+- `OSCILLINK_JWKS_OFFLINE_GRACE` — allow cached JWKS for this many seconds if JWKS URL is unreachable (default 86400)
+
+Windows note:
+- The compose file mounts `deploy\\license` and `deploy\\data`. Ensure these directories exist on Windows before starting.
+
+Kubernetes (Helm):
+- Chart skeleton is under `deploy/helm/oscillink`. Create a Secret with your license and install the chart:
+	- Set `image.repository` and `image.tag` as needed.
+	- Mount the license secret at `/run/secrets/oscillink.lic`.
+ 	- Set `OSCILLINK_LICENSE_PATH` and `OSCILLINK_JWKS_URL` via values.
+
+License service (tiny):
+- The repo includes a minimal FastAPI sketch at `license_svc/main.py` with endpoints:
+	- `/.well-known/jwks.json` for public keys
+	- `/v1/license/renew` to renew tokens
+	- `/v1/usage/report` to accept aggregated usage batches (HMAC)
+
+Notes:
+- At container start, `entrypoint.sh` verifies the JWT against JWKS and exports entitlements to `/run/oscillink_entitlements.json` and an env file `/run/oscillink_entitlements.env` consumed by the app.
+- Readiness endpoint: `/license/status` reflects license status (ok/stale/expired/unlicensed). Set `OSCILLINK_LICENSE_REQUIRED=1` to fail readiness (503) when expired/missing. Helm chart wires readinessProbe to this path and livenessProbe to `/health`.
+- License→env mapping: the verifier exports limits to envs honored by the app:
+	- `OSCILLINK_MAX_NODES`, `OSCILLINK_MAX_DIM` — enforced against request shapes
+	- `OSCILLINK_RATE_LIMIT`/`OSCILLINK_RATE_WINDOW` — global QPS with `X-RateLimit-*` headers
+	- `OSCILLINK_KEY_NODE_UNITS_LIMIT`/`OSCILLINK_KEY_NODE_UNITS_WINDOW` — per-key quota with `X-Quota-*` headers
+	- `OSCILLINK_MONTHLY_CAP` — monthly unit cap override (else tier catalog applies), with `X-Monthly-*` headers
+	- `OSCILLINK_API_KEYS` and `OSCILLINK_KEY_TIERS` — enables auth and tier mapping
+	- `OSCILLINK_FEAT_*` — feature toggles overlay (e.g., `OSCILLINK_FEAT_DIFFUSION_GATES=1`)
+- Set `OSCILLINK_USAGE_LOG` to a file path to capture local usage JSONL; set `OSCILLINK_USAGE_FLUSH_URL` and `OSCILLINK_LICENSE_ID` to enable periodic batch upload (the flusher retries with backoff and idempotency keys).
+
+Operator introspection:
+- Set an admin secret and query the effective limits and overlays for debugging:
+
+```powershell
+$env:OSCILLINK_ADMIN_SECRET = "<random>"
+curl -H "X-Admin-Secret: $env:OSCILLINK_ADMIN_SECRET" http://localhost:8000/admin/introspect
+```
+
+The response includes license status, enforced limits (nodes, dim, rate/quota/monthly caps, per-IP and endpoint rate limits), cache settings, feature overlays (`OSCILLINK_FEAT_*`), and API key configuration mode.
+
+### Kubernetes Helm add-ons
+
+The Helm chart includes optional production hardening resources you can enable via `values.yaml`:
+
+- NetworkPolicy: restricts ingress to port 8080 and allows egress to JWKS endpoints. Enable with `networkPolicy.enabled=true`. Adjust `egressCIDR` and `egressPorts` as needed.
+- PodDisruptionBudget: keep at least one pod available during voluntary disruptions. Enable with `pdb.enabled=true` and tune `minAvailable`/`maxUnavailable`.
+- HorizontalPodAutoscaler: scale based on CPU/memory utilization. Enable with `hpa.enabled=true` and set utilization targets.
+- Ingress: optional HTTP(S) exposure. Enable with `ingress.enabled=true`, set `ingress.host`, and configure TLS via `ingress.tls.*`.
+
+For private clusters, also consider restricting `/metrics` via NetworkPolicy or a service mesh policy.
+
+### Operations: metrics and logging knobs
+
+Operators can enable low-noise JSON access logs and protect the metrics endpoint without code changes:
+
+- Metrics protection: set `OSCILLINK_METRICS_PROTECTED=1` to require `X-Admin-Secret` header on `GET /metrics`.
+	- Provide the secret via env (e.g., Helm `envFrom` Secret) as `OSCILLINK_ADMIN_SECRET`.
+	- When enabled and the header is missing or mismatched, `/metrics` returns 403.
+- JSON access logs: set `OSCILLINK_JSON_LOGS=1` to emit structured JSON logs for each request.
+	- Control sampling with `OSCILLINK_LOG_SAMPLE` in [0.0, 1.0] (default `1.0`). Example: `OSCILLINK_LOG_SAMPLE=0.1` to log ~10% of requests.
+	- Logs include request id, path, latency (ms), status code, and limited metadata (no bodies).
+
+Container image pinning:
+
+- The licensed container uses a pinned base image `python:3.11.9-slim`.
+- For additional supply-chain hardening, consider pinning by digest in your image registry or Helm values (e.g., `image.digest: sha256:…`).
+- Our CI includes non-blocking SBOM generation, pip-audit, and Trivy scanning; you can make them blocking in your fork by changing the exit code behavior.
+
 Response shape (abridged):
 
 - `state_sig: str` — checksum of lattice state for audit
@@ -732,6 +858,10 @@ Notes:
 - Receipts schema and examples: `docs/RECEIPTS.md`
 - Advanced cloud topics: `docs/CLOUD_ARCH_GCP.md`, `docs/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md`, `docs/FIRESTORE_USAGE_MODEL.md`, `docs/STRIPE_INTEGRATION.md`
 - Observability: `docs/OBSERVABILITY.md` and importable Grafana dashboard at `assets/grafana/oscillink_dashboard.json`
+- Image signing: `docs/IMAGE_SIGNING.md`
+- Operations runbook: `docs/OPERATIONS.md`
+- Networking & egress: `docs/NETWORKING.md`
+- Pricing (licensed container): `docs/PRICING.md`
 - OpenAPI baseline: `openapi_baseline.json`
 - Whitepaper: Oscillink — A Symmetric Positive Definite Lattice for Scalable Working Memory & Hallucination Control (`OscillinkWhitepaper.tex`)
 - Examples: `examples/quickstart.py`, `examples/diffusion_gated.py`
@@ -751,6 +881,15 @@ Notes:
 - Terms of Service: [`docs/TERMS.md`](docs/TERMS.md)
 - Privacy Policy: [`docs/PRIVACY.md`](docs/PRIVACY.md)
 - Data Processing Addendum (DPA): [`docs/DPA.md`](docs/DPA.md)
+
+### Patent and OSS usage (FAQ)
+
+- Does “patent pending” affect my use?
+	- No. Oscillink is open source under Apache‑2.0. You can use, modify, and distribute the software under that license. Apache‑2.0 includes an explicit patent license to practice the Work as contributed. See `LICENSE` for details.
+- Why mention a patent at all?
+	- Transparency and virtual marking. Our filing is primarily defensive—to deter bad‑faith, closed duplications and protect the project’s ability to go to market—not to restrict good‑faith OSS adoption.
+- Can I use Oscillink commercially?
+	- Yes, Apache‑2.0 permits commercial use. Please also review our Terms for brand, cloud, and service usage.
 
 ## Privacy & data handling
 
@@ -790,7 +929,8 @@ Notes:
 	- Ensure the server has `STRIPE_SECRET_KEY` and price→tier mapping configured; see `docs/STRIPE_INTEGRATION.md`
 
 - Redis not used despite being configured
-	- Set `OSCILLINK_STATE_BACKEND=redis` and provide `OSCILLINK_REDIS_URL` (or `REDIS_URL`); see `docs/REDIS_BACKEND.md`
+	- Set `OSCILLINK_STATE_BACKEND=redis` and provide `OSCILLINK_REDIS_URL` (or `REDIS_URL`); see `docs/REDIS_BACKEND.md`.
+	- For CLI pairing sessions specifically, also set `OSCILLINK_CLI_SESSIONS_BACKEND=redis` (see “Redis-backed CLI sessions” above).
 
 ## Error taxonomy (quick reference)
 
@@ -850,3 +990,15 @@ Notes:
 ---
 
 [1] Hallucination headline details: see notebook `notebooks/04_hallucination_reduction.ipynb` (dataset card with N, k, trials, seed) and the CLI sample plot at `assets/benchmarks/competitor_single.png`.
+
+---
+
+## Pricing (licensed container)
+
+Simple per-container licensing with clear entitlements and an enterprise cluster option.
+
+- Starter: $49/container · Team: $199/container · Scale Pack: $699 (5 containers) · Enterprise: $2k–$6k/cluster
+- Dev (free) for labs/evaluation with caps
+- Annual discount: 2 months free; Founding cohort: first 100 buyers lock pricing for 12 months
+
+See full details, market anchors, and entitlements: `docs/PRICING.md`.

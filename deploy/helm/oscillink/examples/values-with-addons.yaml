@@ -1,0 +1,54 @@
+# Example values enabling add-ons
+image:
+  repository: ghcr.io/oscillink/oscillink
+  tag: v0.1.11
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Point the chart to your admin secret for envFrom
+adminSecretRefName: oscillink-admin-env
+
+env:
+  OSCILLINK_JWKS_URL: https://license.oscillink.com/.well-known/jwks.json
+  OSCILLINK_TELEMETRY: minimal
+  OSCILLINK_LICENSE_PATH: /run/secrets/oscillink.lic
+  OSCILLINK_LICENSE_REQUIRED: "1"
+  OSCILLINK_ENTITLEMENTS_PATH: /run/oscillink_entitlements.json
+
+secretMounts:
+  - name: license
+    mountPath: /run/secrets
+    secretName: oscillink-license
+
+# Enable and tune optional resources
+networkPolicy:
+  enabled: true
+  allowDNS: true
+  egressCIDR: 0.0.0.0/0
+  egressPorts: [443, 80]
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  cpu:
+    enabled: true
+    targetAverageUtilization: 65
+  memory:
+    enabled: false
+
+ingress:
+  enabled: true
+  host: oscillink.local.example
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+  tls:
+    enabled: true
+    secretName: oscillink-tls

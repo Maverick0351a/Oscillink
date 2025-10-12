@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+# Pin to a stable Python patch version for reproducibility; update as needed
+FROM python:3.11.9-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl bash && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy project and install with cloud extras
+COPY pyproject.toml /app/
+COPY oscillink/ /app/oscillink/
+COPY cloud/app /app/cloud/app
+
+RUN pip install --no-cache-dir .[cloud-all] cryptography>=42.0
+
+# License tooling and entrypoint
+COPY cloud/entrypoint.sh /app/entrypoint.sh
+COPY tools/license_verify.py /app/tools/license_verify.py
+COPY tools/usage_flush.py /app/tools/usage_flush.py
+RUN chmod +x /app/entrypoint.sh
+
+# Default envs (can be overridden)
+ENV OSCILLINK_LICENSE_PATH=/run/secrets/oscillink.lic \
+    OSCILLINK_JWKS_URL=https://license.oscillink.com/.well-known/jwks.json \
+    OSCILLINK_TELEMETRY=minimal \
+    PORT=8080
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD curl -fsS http://127.0.0.1:8080/health || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]

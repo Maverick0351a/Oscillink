@@ -21,6 +21,10 @@ def _admin_guard(x_admin_secret: str | None = Header(default=None)):
     return True
 
 
+def _truthy(val: str | None) -> bool:
+    return val in {"1", "true", "TRUE", "on", "On", "yes", "YES"}
+
+
 @router.get("/admin/keys/{api_key}", response_model=AdminKeyResponse)
 def admin_get_key(api_key: str, auth=Depends(_admin_guard)):
     ks = get_keystore()
@@ -160,3 +164,103 @@ def admin_cancel_subscription(
         raise HTTPException(status_code=501, detail="stripe library not installed") from exc
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"failed to cancel subscription: {e}") from e
+
+
+@router.get("/admin/introspect")
+def admin_introspect(auth=Depends(_admin_guard)):
+    """Return effective entitlements, limits, and feature overlays for operators.
+
+    This endpoint is read-only and intended for debugging licensed-container deployments.
+    It aggregates:
+    - License status (from exported entitlements JSON if present)
+    - Effective limits from environment (max nodes/dim, global rate limit, per-key quota defaults,
+      monthly cap override, IP and endpoint rate-limit knobs)
+    - Feature overlay env flags (OSCILLINK_FEAT_*)
+    - API key config mode (env list present and keystore backend)
+    """
+    # License/entitlements
+    ent_path = os.getenv("OSCILLINK_ENTITLEMENTS_PATH", "/run/oscillink_entitlements.json")
+    try:
+        leeway = int(os.getenv("OSCILLINK_JWT_LEEWAY", "300"))
+    except ValueError:
+        leeway = 300
+    require = os.getenv("OSCILLINK_LICENSE_REQUIRED", "0").lower() in {"1", "true", "on"}
+    lic = {"status": "unknown"}
+    try:
+        with open(ent_path, encoding="utf-8") as f:
+            data = __import__("json").load(f)
+        exp = int(data.get("exp")) if isinstance(data.get("exp"), (int, float)) else None
+        now = __import__("time").time()
+        if exp is not None and (now - leeway) > exp:
+            lic = {"status": "expired", "exp": int(exp)}
+        else:
+            lic = {
+                "status": "ok",
+                "exp": exp,
+                "iss": data.get("iss"),
+                "sub": data.get("sub") or data.get("license_id"),
+                "tier": data.get("tier"),
+            }
+    except Exception:
+        lic = {"status": "unlicensed" if require else "unknown"}
+
+    # Limits and quotas (environment-derived)
+    def _int(name: str, default: int) -> int:
+        try:
+            return int(os.getenv(name, str(default)))
+        except ValueError:
+            return default
+
+    limits = {
+        "max_nodes": _int("OSCILLINK_MAX_NODES", 5000),
+        "max_dim": _int("OSCILLINK_MAX_DIM", 2048),
+        "rate_limit": _int("OSCILLINK_RATE_LIMIT", 0),
+        "rate_window": _int("OSCILLINK_RATE_WINDOW", 60),
+        "quota_limit_units": _int("OSCILLINK_KEY_NODE_UNITS_LIMIT", 0),
+        "quota_window_seconds": _int("OSCILLINK_KEY_NODE_UNITS_WINDOW", 60),
+        "monthly_cap_override": _int("OSCILLINK_MONTHLY_CAP", 0),
+        "ip_rate_limit": _int("OSCILLINK_IP_RATE_LIMIT", 0),
+        "ip_rate_window": _int("OSCILLINK_IP_RATE_WINDOW", 60),
+        "endpoint_limits": {
+            "cli_start": {
+                "limit": _int("OSCILLINK_EPRL_CLI_START_LIMIT", 0),
+                "window": _int("OSCILLINK_EPRL_CLI_START_WINDOW", 60),
+            },
+            "cli_poll": {
+                "limit": _int("OSCILLINK_EPRL_CLI_POLL_LIMIT", 0),
+                "window": _int("OSCILLINK_EPRL_CLI_POLL_WINDOW", 60),
+            },
+        },
+        "cache": {
+            "enabled": _truthy(os.getenv("OSCILLINK_CACHE_ENABLE", "0")),
+            "ttl": _int("OSCILLINK_CACHE_TTL", 300),
+            "cap": _int("OSCILLINK_CACHE_CAP", 128),
+        },
+    }
+
+    # Feature overlays
+    feat_overlays: dict[str, str | bool] = {}
+    for k, v in os.environ.items():
+        if k.startswith("OSCILLINK_FEAT_"):
+            feat_overlays[k] = True if _truthy(v) else (False if v in {"0", "off", "OFF"} else v)
+
+    # API key configuration (high-level)
+    api_keys_raw = os.getenv("OSCILLINK_API_KEYS", "").strip()
+    tiers_raw = os.getenv("OSCILLINK_KEY_TIERS", "").strip()
+    keystore_backend = os.getenv("OSCILLINK_KEYSTORE_BACKEND", "memory").lower()
+    api_cfg = {
+        "keystore_backend": keystore_backend,
+        "env_api_keys_configured": bool(api_keys_raw),
+        "env_api_key_count": (
+            len([x for x in api_keys_raw.split(",") if x.strip()]) if api_keys_raw else 0
+        ),
+        "env_key_tiers": tiers_raw,
+    }
+
+    return {
+        "license": lic,
+        "limits": limits,
+        "features_overlay": feat_overlays,
+        "api_keys": api_cfg,
+        "readiness": {"license_required": require, "entitlements_path": ent_path},
+    }
