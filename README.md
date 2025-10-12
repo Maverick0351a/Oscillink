@@ -50,186 +50,23 @@ Setup: synthetic “facts + traps” dataset — see the notebook for N, k, tria
 	<a href="notebooks/">Notebooks</a>
 </p>
 
-## Use Oscillink: SDK or Licensed Container
-
-- SDK (pip): Keep everything local. Best for adding coherence directly inside your application process. Start at [Install](#install) and [60‑second SDK quickstart](#60-second-sdk-quickstart).
-- Licensed Container (customer‑managed): Run the API entirely inside your VPC or cluster with license‑based entitlements. Jump to [Licensed Container (customer‑managed)](#licensed-container-customer-managed). Operators can then dive into [Operations](docs/ops/OPERATIONS.md) and [Networking](docs/ops/NETWORKING.md).
-
-### Table of contents
-
-- [TL;DR](#tldr)
-- [Quickstart](#quickstart)
-- [Adapters & model compatibility](#adapters--model-compatibility)
-- [Licensed Container (customer-managed)](#licensed-container-customer-managed)
-- [Cloud API (beta)](#option-b-cloud-api-beta)
-- [Proven Results](#proven-results)
-- [Performance](#performance-sdk-reference)
-- [How It Works](#how-it-works-technical)
-- [Install](#install)
-- [Run the server](#run-the-server-operators)
-- [Use the Cloud](#use-the-cloud)
-- [Docs & examples](#docs--examples)
-- [Troubleshooting](#troubleshooting-cloud)
-- [Pricing (licensed container)](#pricing-licensed-container)
-
-### SDK at a glance
-
-```python
-from oscillink import Oscillink
-
-# Y: (N, D) document embeddings; psi: (D,) query embedding (float32 recommended)
-lattice = Oscillink(Y, kneighbors=6)
-lattice.set_query(psi)
-lattice.settle()
-topk = lattice.bundle(k=5)  # coherent results
-receipts = lattice.receipt()  # deterministic audit (energy breakdown)
-```
-
-### Quick install (60 seconds)
-
-```bash
-pip install oscillink
-python - <<'PY'
-import numpy as np
-from oscillink import Oscillink
-Y = np.random.randn(80,128).astype('float32')
-psi = (Y[:10].mean(0)/ (np.linalg.norm(Y[:10].mean(0))+1e-9)).astype('float32')
-lat = Oscillink(Y, kneighbors=6, lamG=1.0, lamC=0.5, lamQ=4.0)
-lat.set_query(psi); lat.settle()
-print(lat.bundle(k=5)); print(lat.receipt()['deltaH_total'])
-PY
-```
-
-
-
-### Quick checks (Windows PowerShell)
-
-```powershell
-# Compare cosine baseline vs Oscillink; writes JSON summary (no plotting)
-python scripts/competitor_benchmark.py --input examples\real_benchmark_sample.jsonl --format jsonl --text-col text --id-col id --label-col label --trap-col trap --query-index 0 --k 5 --json --out benchmarks\competitor_sample.json
-
-# Scaling harness; emits JSONL suitable for analysis
-python scripts/scale_benchmark.py --N 400 800 1200 --D 64 --k 6 --trials 2 > benchmarks\scale.jsonl
-```
-
-With fixed D=64, k=6, tol=1e-3 and Jacobi preconditioning, CG converges in ~3–4 iterations; E2E time trends sublinear in practice with improved connectivity at larger N. Laptop ref: 3.5 GHz i7, Python 3.11, NumPy MKL/Accelerate.
-
-<p align="center"><i>API v1 • Cloud: beta</i></p>
-
-> Prefer containers? Use the licensed container for easy distribution inside your VPC or laptop. Try `docker compose -f deploy/docker-compose.yml up -d` after placing your license at `deploy/license/oscillink.lic`. See the “Licensed Container (customer-managed)” section below.
-
 ---
 
-## TL;DR
-- Coherent memory for any model (LLMs, image, video, audio, 3D) — no retraining.
-- Deterministic receipts for auditability and reproducibility.
-- SPD system with guaranteed convergence; typical E2E latency < 40 ms at N≈1200.
-- Coherence‑first retrieval that works alongside RAG — see metrics below.
+## Contents
 
-Quick links:
-- [SDK Quickstart](#quickstart) · [API + Receipts](docs/reference/API.md) · [Cloud (beta)](#use-the-cloud)
-
-
-## Overview
-
-Oscillink builds a transient graph (mutual‑kNN) over input embeddings and settles to a globally coherent state by minimizing a strictly convex energy. The stationary point is unique (SPD), reproducible, and yields:
-
-- A refined representation U* for the candidate set
-- An energy receipt ΔH (with term breakdown)
-- Null‑point diagnostics (edge‑level incoherence)
-- Optional chain priors for path‑constrained reasoning
-
-No training is required; your embeddings are the model.
-
-
-## The Problem with Generative AI Today
-
-Every generative model suffers from:
-- **No working memory** between generations
-- **Hallucinations** from disconnected context
-- **RAG's brittleness** with incoherent chunks
-- **No audit trail** for decisions
-
-## Oscillink: The Universal Solution
-
-✅ **Coherent memory**: Physics-based SPD system maintains semantic coherence
-✅ **Proven results**: See metrics below (controlled study and benchmarks)
-✅ **Any model**: Works with LLMs, image generators, video, audio, 3D
-✅ **Coherence‑first retrieval**: Can sit alongside similarity‑only RAG
-✅ **Signed receipts**: Deterministic audit trail for every decision
+- Overview
+- Quickstart
+- Adapters & Compatibility
+- Reproducibility
+- Performance
+- Method (Technical)
+- Deployment Options
+- Security, Privacy, Legal
+- Troubleshooting
+- Contributing & License
+- Changelog
 
 ---
-
-
-
-## Quickstart
-
-Minimal 60s example:
-```bash
-pip install oscillink
-python - <<'PY'
-import numpy as np
-from oscillink import Oscillink
-
-# N x D anchors (float32), D-dim query
-Y = np.random.randn(80,128).astype('float32')
-psi = (Y[:10].mean(0) / (np.linalg.norm(Y[:10].mean(0)) + 1e-9)).astype('float32')
-
-lat = Oscillink(Y, kneighbors=6, lamG=1.0, lamC=0.5, lamQ=4.0)
-lat.set_query(psi)
-lat.settle()
-
-print("top-5:", [(b["id"], round(b["score"],3)) for b in lat.bundle(k=5)])
-print("ΔH:", lat.receipt()["deltaH_total"])
-PY
-```
-
-System requirements: Python 3.10–3.12, NumPy ≥1.22 (1.x/2.x supported). CPU only.
-
-### Option A: Local SDK
-```python
-from oscillink import Oscillink
-import numpy as np
-
-# Your embeddings (from OpenAI, Cohere, Sentence-Transformers, etc.)
-Y = np.array(embeddings).astype(np.float32)  # Shape: (n_docs, embedding_dim)
-psi = np.array(query_embedding).astype(np.float32)  # Shape: (embedding_dim,)
-
-# Create coherent memory in 3 lines
-lattice = Oscillink(Y, kneighbors=6)
-lattice.set_query(psi)
-lattice.settle()
-
-# Get coherent results (not just similar)
-top_k = lattice.bundle(k=5)
-receipt = lattice.receipt()  # Audit trail with energy metrics
-```
-
-Requirements:
- Python 3.10–3.12; NumPy >= 1.22 and < 3.0 (1.x and 2.x supported)
-- Embeddings: shape (N, D), dtype float32 recommended; near unit-norm preferred
-
-Compatibility:
-- OS: Windows, macOS, Linux
- - Python: 3.10–3.12
-- NumPy: 1.22–2.x (tested in CI)
-- CPU only; no GPU required
-
-### Adapters & model compatibility
-
-Oscillink is designed to be universal and light on dependencies:
-
-- Bring your own embeddings: from OpenAI, Cohere, or local models; just supply `Y: (N,D)` and your query `psi: (D,)`.
-- Minimal deps: NumPy + small helpers. We avoid heavy, model‑specific stacks by design.
-- Adapters: see `oscillink.adapters.*` for simple utilities (e.g., text embedding helpers). You can use any embedding pipeline you prefer.
-- Per‑model adjustments: for best results you may tune `kneighbors` and the lattice weights (`lamC`, `lamQ`) to your domain; the CLI `--tune` flag and the adaptive profile suite provide quick, data‑driven defaults.
-- Preprocessing: optional `smart_correct` can reduce incidental traps on noisy inputs (code/URL aware).
-
-This flexibility ensures Oscillink works with your existing stack without imposing a large dependency footprint.
-
-### Option B: Cloud API (beta)
-Cloud is strictly opt‑in. The SDK never sends data anywhere.
-```bash
 pip install oscillink
 # Oscillink — Self‑Optimizing Coherent Memory for Embedding Workflows
 
@@ -457,9 +294,9 @@ import os, httpx
 API_BASE = os.environ.get("OSCILLINK_API_BASE", "https://api2.odinprotocol.dev")
 API_KEY  = os.environ["OSCILLINK_API_KEY"]
 r = httpx.post(
-    f"{API_BASE}/v1/settle",
-    json={"Y": [[0.1,0.2]], "psi": [0.1,0.2], "options": {"bundle_k": 1, "include_receipt": True}},
-    headers={"X-API-Key": API_KEY},
+	f"{API_BASE}/v1/settle",
+	json={"Y": [[0.1,0.2]], "psi": [0.1,0.2], "options": {"bundle_k": 1, "include_receipt": True}},
+	headers={"X-API-Key": API_KEY},
 )
 print(r.json())
 ```
