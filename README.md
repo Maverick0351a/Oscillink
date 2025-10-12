@@ -49,6 +49,7 @@ Setup: synthetic “facts + traps” dataset — see the notebook for N, k, tria
 - [Use the Cloud](#use-the-cloud)
 - [Docs & examples](#docs--examples)
 - [Troubleshooting](#troubleshooting-cloud)
+- [Pricing (licensed container)](#pricing-licensed-container)
 
 ### SDK at a glance
 
@@ -860,6 +861,7 @@ Notes:
 - Image signing: `docs/IMAGE_SIGNING.md`
 - Operations runbook: `docs/OPERATIONS.md`
 - Networking & egress: `docs/NETWORKING.md`
+- Pricing (licensed container): `docs/PRICING.md`
 - OpenAPI baseline: `openapi_baseline.json`
 - Whitepaper: Oscillink — A Symmetric Positive Definite Lattice for Scalable Working Memory & Hallucination Control (`OscillinkWhitepaper.tex`)
 - Examples: `examples/quickstart.py`, `examples/diffusion_gated.py`
@@ -988,3 +990,15 @@ Notes:
 ---
 
 [1] Hallucination headline details: see notebook `notebooks/04_hallucination_reduction.ipynb` (dataset card with N, k, trials, seed) and the CLI sample plot at `assets/benchmarks/competitor_single.png`.
+
+---
+
+## Pricing (licensed container)
+
+Simple per-container licensing with clear entitlements and an enterprise cluster option.
+
+- Starter: $49/container · Team: $199/container · Scale Pack: $699 (5 containers) · Enterprise: $2k–$6k/cluster
+- Dev (free) for labs/evaluation with caps
+- Annual discount: 2 months free; Founding cohort: first 100 buyers lock pricing for 12 months
+
+See full details, market anchors, and entitlements: `docs/PRICING.md`.
