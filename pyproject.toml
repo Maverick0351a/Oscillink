@@ -63,6 +63,12 @@ dev = [
   "prometheus-client>=0.20",
   "matplotlib>=3.7"
 ]
+bench = [
+  "sentence-transformers>=2.2.2",
+  "ir_datasets>=0.5.5",
+  "ranx>=0.3.20",
+  "tqdm>=4.66"
+]
 cloud = [
   "fastapi>=0.111",
   "uvicorn[standard]>=0.30",
