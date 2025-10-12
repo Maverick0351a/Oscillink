@@ -40,12 +40,6 @@ def _write_env_placeholder(path: str) -> None:
         f.write("\n# STRIPE_WEBHOOK_SECRET=<set securely via your secret manager or CI/CD>\n")
 
 
-def _write_env_secret_insecure(path: str, secret: str) -> None:
-    # Explicitly insecure path: user must opt-in
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(f"\nSTRIPE_WEBHOOK_SECRET={secret}\n")
-
-
 def _store_secret_keyring(wid_or_url: str, secret: str) -> bool:
     """Best-effort secure storage using system keyring. Returns True on success."""
     try:
