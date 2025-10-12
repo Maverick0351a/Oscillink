@@ -424,6 +424,13 @@ API: http://localhost:8000 · health: `/health` · license status: `/license/sta
 - `OSCILLINK_USAGE_FLUSH_URL` (batch upload)
 - JWT verification knobs: `OSCILLINK_JWT_ISS`, `OSCILLINK_JWT_AUD`, `OSCILLINK_JWT_LEEWAY`, `OSCILLINK_JWKS_TTL`, `OSCILLINK_JWKS_OFFLINE_GRACE`
 
+#### Redis (optional)
+
+- `OSCILLINK_STATE_BACKEND=redis` — enable Redis-backed app state (e.g., rate limits, quotas, caches)
+- `OSCILLINK_REDIS_URL=redis://localhost:6379/0` — Redis connection string (alternatively, set `REDIS_URL`)
+
+See `docs/ops/REDIS_BACKEND.md` for details and production guidance.
+
 #### Kubernetes (Helm)
 
 - Chart skeleton at `deploy/helm/oscillink`.
