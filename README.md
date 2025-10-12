@@ -1,4 +1,4 @@
-# Oscillink — Self‑Optimizing Memory for Generative Models and Databases
+# Oscillink — Self‑Optimizing Coherent Memory for Embedding Workflows
 
 Build coherence into retrieval and generation. Deterministic receipts for every decision. Latency that scales gracefully with corpus size.
 
@@ -12,6 +12,7 @@ Build coherence into retrieval and generation. Deterministic receipts for every 
 	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 	<a href="PATENTS.md"><img alt="Patent pending" src="https://img.shields.io/badge/Patent-pending-blueviolet.svg"/></a>
+	<a href="docs/foundations/MATH_OVERVIEW.md"><img alt="Math" src="https://img.shields.io/badge/Math-Math%20Overview-4B8BBE"/></a>
 	<br/>
 	<sub>CI: Python 3.10–3.12 × NumPy 1.x/2.x</sub>
 
@@ -23,20 +24,30 @@ Build coherence into retrieval and generation. Deterministic receipts for every 
   <a href="https://pypi.org/project/oscillink/"><img alt="pip install oscillink" src="https://img.shields.io/badge/pip%20install-oscillink-3776AB?logo=pypi&logoColor=white"/></a>
 </p>
 
-<p align="center"><b>Coherence-first memory for any embeddings. Deterministic receipts. Under 40ms E2E at N≈1200.</b><br/>
+<p align="center"><b>A physics‑inspired, model‑free coherence layer that transforms candidate embeddings into an explainable working‑memory state via convex energy minimization. Deterministic receipts for audit. Conjugate‑gradient solve with SPD guarantees.</b><br/>
 <code>pip install oscillink</code></p>
 
 Setup: synthetic “facts + traps” dataset — see the notebook for N, k, trials, seed. Reproducible via `notebooks/04_hallucination_reduction.ipynb`. Traps flagged; gate=0.01, off‑topic damp=0.5.
 
-- ⚡ Latency scales smoothly: with fixed D, k, and CG tol, settle tends to remain stable with denser graphs. Reference E2E < 40 ms at N≈1200 on a laptop CPU.
-- 🎯 Hallucination control: in our controlled study[1], Oscillink reduced trap selections while maintaining competitive F1. See the notebook for setup and reproduction.
-- 🧾 Receipts: SHA‑256 state signature; optional HMAC‑SHA256. [schema](docs/reference/RECEIPTS.md)
-- 🔧 Universal: works with any embeddings, no retraining. [adapters](#adapters--model-compatibility) · [quickstart](examples/quickstart.py)
-- 📈 Self‑optimizing: learns parameters over time. [adaptive suite](scripts/bench_adaptive_suite.py)
-- 🚀 Production: scales to millions. See scripts under `scripts/` for reproducible benchmarks.
+- Latency scales smoothly: with fixed D, k, and CG tol, settle tends to remain stable with denser graphs. Reference E2E < 40 ms at N≈1200 on a laptop CPU.
+- Hallucination control: in our controlled study[1], Oscillink reduced trap selections while maintaining competitive F1. See the notebook for setup and reproduction.
+- Receipts: SHA‑256 state signature; optional HMAC‑SHA256. [schema](docs/reference/RECEIPTS.md)
+- Universal: works with any embeddings, no retraining. [adapters](#adapters--model-compatibility) · [quickstart](examples/quickstart.py)
+- Self‑optimizing: learns parameters over time. [adaptive suite](scripts/bench_adaptive_suite.py)
+- Production: scales to millions. See scripts under `scripts/` for reproducible benchmarks.
 
 <p>
 	<a href="#quickstart">Get Started</a> · <a href="docs/reference/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
+</p>
+
+<p align="center">
+	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml">CI</a> ·
+	<a href="https://pypi.org/project/oscillink/">PyPI</a> ·
+	<a href="docs/reference/API.md">API</a> ·
+	<a href="docs/foundations/MATH_OVERVIEW.md">Math</a> ·
+	<a href="docs/reference/RECEIPTS.md">Receipts</a> ·
+	<a href="benchmarks/">Benchmarks</a> ·
+	<a href="notebooks/">Notebooks</a>
 </p>
 
 ## Use Oscillink: SDK or Licensed Container
@@ -117,6 +128,18 @@ Quick links:
 - [SDK Quickstart](#quickstart) · [API + Receipts](docs/reference/API.md) · [Cloud (beta)](#use-the-cloud)
 
 
+## Overview
+
+Oscillink builds a transient graph (mutual‑kNN) over input embeddings and settles to a globally coherent state by minimizing a strictly convex energy. The stationary point is unique (SPD), reproducible, and yields:
+
+- A refined representation U* for the candidate set
+- An energy receipt ΔH (with term breakdown)
+- Null‑point diagnostics (edge‑level incoherence)
+- Optional chain priors for path‑constrained reasoning
+
+No training is required; your embeddings are the model.
+
+
 ## The Problem with Generative AI Today
 
 Every generative model suffers from:
@@ -138,6 +161,28 @@ Every generative model suffers from:
 
 
 ## Quickstart
+
+Minimal 60s example:
+```bash
+pip install oscillink
+python - <<'PY'
+import numpy as np
+from oscillink import Oscillink
+
+# N x D anchors (float32), D-dim query
+Y = np.random.randn(80,128).astype('float32')
+psi = (Y[:10].mean(0) / (np.linalg.norm(Y[:10].mean(0)) + 1e-9)).astype('float32')
+
+lat = Oscillink(Y, kneighbors=6, lamG=1.0, lamC=0.5, lamQ=4.0)
+lat.set_query(psi)
+lat.settle()
+
+print("top-5:", [(b["id"], round(b["score"],3)) for b in lat.bundle(k=5)])
+print("ΔH:", lat.receipt()["deltaH_total"])
+PY
+```
+
+System requirements: Python 3.10–3.12, NumPy ≥1.22 (1.x/2.x supported). CPU only.
 
 ### Option A: Local SDK
 ```python
