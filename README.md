@@ -29,11 +29,17 @@ Setup: synthetic “facts + traps” dataset — see the notebook for N, k, tria
 	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 </p>
 
+## Use Oscillink: SDK or Licensed Container
+
+- SDK (pip): Keep everything local. Best for adding coherence directly inside your application process. Start at [Install](#install) and [60‑second SDK quickstart](#60-second-sdk-quickstart).
+- Licensed Container (customer‑managed): Run the API entirely inside your VPC or cluster with license‑based entitlements. Jump to [Licensed Container (customer‑managed)](#licensed-container-customer-managed). Operators can then dive into [Operations](docs/OPERATIONS.md) and [Networking](docs/NETWORKING.md).
+
 ### Table of contents
 
 - [TL;DR](#tldr)
 - [Quickstart](#quickstart)
 - [Adapters & model compatibility](#adapters--model-compatibility)
+- [Licensed Container (customer-managed)](#licensed-container-customer-managed)
 - [Cloud API (beta)](#option-b-cloud-api-beta)
 - [Proven Results](#proven-results)
 - [Performance](#performance-sdk-reference)
@@ -41,7 +47,6 @@ Setup: synthetic “facts + traps” dataset — see the notebook for N, k, tria
 - [Install](#install)
 - [Run the server](#run-the-server-operators)
 - [Use the Cloud](#use-the-cloud)
-- [Licensed Container (customer-managed)](#licensed-container-customer-managed)
 - [Docs & examples](#docs--examples)
 - [Troubleshooting](#troubleshooting-cloud)
 
@@ -72,14 +77,6 @@ lat.set_query(psi); lat.settle()
 print(lat.bundle(k=5)); print(lat.receipt()['deltaH_total'])
 PY
 ```
-
-> Cloud Beta ($19, limited seats): hosted settle + signed receipts. Join from your terminal in ~60s:
->
-> ```powershell
-> oscillink signup --wait
-> $env:OSCILLINK_API_BASE = "https://api2.odinprotocol.dev"
-> ```
-
 
 
 
@@ -690,6 +687,12 @@ Quickstart (Docker):
 - Create a folder `deploy\license` and place your license file `oscillink.lic` (JWT) inside.
 - Run `docker-compose -f deploy/docker-compose.yml up -d`.
 - The API will be available on http://localhost:8000 (health at `/health`).
+
+Windows one‑liner (PowerShell):
+
+```powershell
+docker compose -f deploy\docker-compose.yml up -d
+```
 
 Required environment variables (container):
 - `OSCILLINK_LICENSE_PATH` — path to the mounted license file (default in our compose: `/run/secrets/oscillink.lic`)
