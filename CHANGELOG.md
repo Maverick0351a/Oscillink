@@ -1,6 +1,10 @@
 # [0.1.9] - 2025-10-10
 # [0.1.9] - 2025-10-10
 ## [Unreleased]
+## [0.1.13] - 2025-10-11
+### Changed
+- README polish: moved logo directly under badges for better GitHub rendering.
+
 ## [0.1.12] - 2025-10-11
 ### Added
 - Production-ready licensed-container operator suite: metrics protection, JSON access logs, security presets, TLS samples, networking guide, and signing guidance.
