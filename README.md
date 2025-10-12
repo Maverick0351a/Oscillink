@@ -14,7 +14,7 @@ Build coherence into retrieval and generation. Deterministic receipts for every 
 	<a href="PATENTS.md"><img alt="Patent pending" src="https://img.shields.io/badge/Patent-pending-blueviolet.svg"/></a>
 	<a href="docs/foundations/MATH_OVERVIEW.md"><img alt="Math" src="https://img.shields.io/badge/Math-Math%20Overview-4B8BBE"/></a>
 	<br/>
-	<sub>CI: Python 3.10–3.12 × NumPy 1.x/2.x</sub>
+	
 
 </p>
 
