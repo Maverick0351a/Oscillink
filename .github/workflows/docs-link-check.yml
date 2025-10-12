@@ -1,0 +1,48 @@
+name: Docs – internal link check
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - '**/*.md'
+      - '.github/workflows/docs-link-check.yml'
+  push:
+    branches: [ main, master, 'chore/**', 'feat/**', 'fix/**' ]
+    paths:
+      - '**/*.md'
+      - '.github/workflows/docs-link-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Markdown links (internal only)
+        uses: lycheeverse/lychee-action@v1
+        with:
+          # Exclude external links to avoid flaky CI; we validate only internal relative paths and anchors
+          args: >-
+            --no-progress
+            --include-fragments
+            --verbose
+            --exclude "https?://"
+            --exclude "mailto:"
+            --exclude "#"
+            --format markdown --output lychee/report.md
+            README.md docs
+          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload lychee report
+        if: ${{ always() && hashFiles('lychee/report.md') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lychee-report
+          path: lychee/report.md
