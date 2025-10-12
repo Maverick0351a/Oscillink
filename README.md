@@ -694,6 +694,22 @@ Windows one‑liner (PowerShell):
 docker compose -f deploy\docker-compose.yml up -d
 ```
 
+Linux/macOS one‑liner (bash/zsh):
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+Notes:
+- Ensure the directories exist before starting (they’re mounted by the compose file):
+
+	```bash
+	mkdir -p deploy/license deploy/data
+	# Place your license at deploy/license/oscillink.lic
+	```
+
+- If your environment uses the legacy Docker Compose standalone binary, replace `docker compose` with `docker-compose`.
+
 Required environment variables (container):
 - `OSCILLINK_LICENSE_PATH` — path to the mounted license file (default in our compose: `/run/secrets/oscillink.lic`)
 - `OSCILLINK_JWKS_URL` — URL to your license service JWKS (e.g., `https://license.oscillink.com/.well-known/jwks.json`)
