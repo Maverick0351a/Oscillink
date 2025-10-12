@@ -1,7 +1,8 @@
 version: '3.8'
 services:
   oscillink:
-    image: ghcr.io/oscillink/oscillink:v0.1.11
+    # Keep tag in sync with latest release
+    image: ghcr.io/oscillink/oscillink:v0.1.13
     ports:
       - "8000:8080"
     environment:

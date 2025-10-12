@@ -34,8 +34,9 @@ jobs:
             --exclude "https?://"
             --exclude "mailto:"
             --exclude "#"
-            --format markdown --output lychee/report.md
             README.md docs
+          format: markdown
+          output: lychee/report.md
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

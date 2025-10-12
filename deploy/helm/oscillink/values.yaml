@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/oscillink/oscillink
-  tag: v0.1.12
+  tag: v0.1.13
   pullPolicy: IfNotPresent
 
 service:
@@ -22,6 +22,8 @@ env:
   OSCILLINK_LICENSE_PATH: /run/secrets/oscillink.lic
   OSCILLINK_LICENSE_REQUIRED: "1"
   OSCILLINK_ENTITLEMENTS_PATH: /run/oscillink_entitlements.json
+  # Protect /metrics with admin secret by default (set OSCILLINK_ADMIN_SECRET via Secret)
+  OSCILLINK_METRICS_PROTECTED: "1"
 
 # Optional: reference a Secret that contains sensitive env vars (e.g., OSCILLINK_ADMIN_SECRET)
 # The Secret keys will be exposed as envs. Example:
