@@ -30,19 +30,19 @@ Setup: synthetic “facts + traps” dataset — see the notebook for N, k, tria
 
 - ⚡ Latency scales smoothly: with fixed D, k, and CG tol, settle tends to remain stable with denser graphs. Reference E2E < 40 ms at N≈1200 on a laptop CPU.
 - 🎯 Hallucination control: in our controlled study[1], Oscillink reduced trap selections while maintaining competitive F1. See the notebook for setup and reproduction.
-- 🧾 Receipts: SHA‑256 state signature; optional HMAC‑SHA256. [schema](docs/RECEIPTS.md)
+- 🧾 Receipts: SHA‑256 state signature; optional HMAC‑SHA256. [schema](docs/reference/RECEIPTS.md)
 - 🔧 Universal: works with any embeddings, no retraining. [adapters](#adapters--model-compatibility) · [quickstart](examples/quickstart.py)
 - 📈 Self‑optimizing: learns parameters over time. [adaptive suite](scripts/bench_adaptive_suite.py)
 - 🚀 Production: scales to millions. See scripts under `scripts/` for reproducible benchmarks.
 
 <p>
-	<a href="#quickstart">Get Started</a> · <a href="docs/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
+	<a href="#quickstart">Get Started</a> · <a href="docs/reference/API.md">API Docs</a> · <a href="#proven-results">See Results</a> · <a href="notebooks/">Live Demos</a>
 </p>
 
 ## Use Oscillink: SDK or Licensed Container
 
 - SDK (pip): Keep everything local. Best for adding coherence directly inside your application process. Start at [Install](#install) and [60‑second SDK quickstart](#60-second-sdk-quickstart).
-- Licensed Container (customer‑managed): Run the API entirely inside your VPC or cluster with license‑based entitlements. Jump to [Licensed Container (customer‑managed)](#licensed-container-customer-managed). Operators can then dive into [Operations](docs/OPERATIONS.md) and [Networking](docs/NETWORKING.md).
+- Licensed Container (customer‑managed): Run the API entirely inside your VPC or cluster with license‑based entitlements. Jump to [Licensed Container (customer‑managed)](#licensed-container-customer-managed). Operators can then dive into [Operations](docs/ops/OPERATIONS.md) and [Networking](docs/ops/NETWORKING.md).
 
 ### Table of contents
 
@@ -114,7 +114,7 @@ With fixed D=64, k=6, tol=1e-3 and Jacobi preconditioning, CG converges in ~3–
 - Coherence‑first retrieval that works alongside RAG — see metrics below.
 
 Quick links:
-- [SDK Quickstart](#quickstart) · [API + Receipts](docs/API.md) · [Cloud (beta)](#use-the-cloud)
+- [SDK Quickstart](#quickstart) · [API + Receipts](docs/reference/API.md) · [Cloud (beta)](#use-the-cloud)
 
 
 ## The Problem with Generative AI Today
@@ -389,7 +389,7 @@ This creates a deterministic SPD system with guaranteed unique solution:
 - **Mathematically proven** convergence
 - **Auditable** — every decision has a signed receipt
 
-[Learn more about the math →](docs/MATH_OVERVIEW.md)
+[Learn more about the math →](docs/foundations/MATH_OVERVIEW.md)
 
 ## Install
 
@@ -485,7 +485,7 @@ Windows quick-setup (local dev):
 Notes for operators:
 
 - Server must have `STRIPE_SECRET_KEY` set. Optional `OSCILLINK_STRIPE_PRICE_MAP` sets price→tier mapping.
-- See docs/STRIPE_INTEGRATION.md for full details.
+- See docs/billing/STRIPE_INTEGRATION.md for full details.
 - Success page is optional: webhook + CLI provisioning work without a public domain. You can enable a success page later by setting the Checkout `success_url` to `<API_BASE>/billing/success?session_id={CHECKOUT_SESSION_ID}`.
 - To enforce the beta hard cap (25M units/month), configure the monthly cap for the `beta` tier in your runtime settings; exceeding the cap returns 429 with `X-Monthly-*` headers.
 
@@ -812,9 +812,9 @@ Response shape (abridged):
 ### Quotas, limits, scale, and billing
 
 See:
-- Quotas, rate limits and headers: `docs/API.md`
-- Redis & horizontal scale: `docs/REDIS_BACKEND.md`
-- Stripe/billing portal and admin flows: `docs/STRIPE_INTEGRATION.md`
+- Quotas, rate limits and headers: `docs/reference/API.md`
+- Redis & horizontal scale: `docs/ops/REDIS_BACKEND.md`
+- Stripe/billing portal and admin flows: `docs/billing/STRIPE_INTEGRATION.md`
 
 ---
 
@@ -834,6 +834,57 @@ Scalability at a glance:
 Hallucination control (controlled study): trap rate reduced 0.33 → 0.00 with F1 uplift (see whitepaper for setup details)
 
 ## Docs & examples
+
+### Docs hub
+
+- Concepts & foundations
+	- [Physics foundations](docs/foundations/PHYSICS_FOUNDATIONS.md)
+	- [Math overview](docs/foundations/MATH_OVERVIEW.md)
+	- [Diffusion outline](docs/foundations/DIFFUSION_WHITEPAPER_OUTLINE.md)
+	- [Hallucination proof](docs/foundations/HALLUCINATION_PROOF.md)
+	- [Specification](docs/foundations/SPEC.md)
+
+- Reference
+	- [API](docs/reference/API.md)
+	- [Receipts](docs/reference/RECEIPTS.md)
+	- [Receipt schema](docs/reference/RECEIPT_SCHEMA.md)
+	- [Receipts JSON Schema](docs/reference/RECEIPTS_SCHEMA.md)
+	- [OpenAPI baseline](openapi_baseline.json)
+
+- Guides
+	- [Chain prior guide](docs/guides/CHAIN_GUIDE.md)
+	- [Scaling](docs/guides/SCALING.md)
+	- [Roadmap](docs/guides/ROADMAP.md)
+	- [Migration from RAG](docs/guides/MIGRATION_FROM_RAG.md)
+
+- Cloud & Ops
+	- [Cloud architecture (GCP)](docs/cloud/CLOUD_ARCH_GCP.md)
+	- [Advanced diffusion endpoint](docs/cloud/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md)
+	- [Observability](docs/ops/OBSERVABILITY.md)
+	- [Operations runbook](docs/ops/OPERATIONS.md)
+	- [Networking & egress](docs/ops/NETWORKING.md)
+	- [Redis backend](docs/ops/REDIS_BACKEND.md)
+	- [Image signing](docs/ops/IMAGE_SIGNING.md)
+	- [Production readiness checklist](docs/ops/PROD_READINESS_CHECKLIST.md)
+	- [Phase 2 gate](docs/ops/PHASE2_GATE.md)
+
+- Billing
+	- [Stripe integration](docs/billing/STRIPE_INTEGRATION.md)
+	- [Data Processing Addendum (DPA)](docs/billing/DPA.md)
+	- [Pricing](docs/billing/PRICING.md)
+
+- Security & legal
+	- [Security policy](SECURITY.md)
+	- [Privacy](docs/product/PRIVACY.md)
+	- [Terms](docs/product/TERMS.md)
+	- [Patent notice](PATENTS.md)
+	- [License](LICENSE)
+
+- Benchmarks & examples
+	- [Benchmarks](benchmarks/)
+	- [Scripts](scripts/)
+	- [Examples](examples/)
+	- [Notebooks](notebooks/)
 
 ## Real dataset CLI (terminal)
 
@@ -861,15 +912,15 @@ Notes:
 - For larger runs, prefer `--json` to capture metrics deterministically.
 
 
-- SDK API: `docs/API.md`
-- Math overview: `docs/MATH_OVERVIEW.md`
-- Receipts schema and examples: `docs/RECEIPTS.md`
-- Advanced cloud topics: `docs/CLOUD_ARCH_GCP.md`, `docs/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md`, `docs/FIRESTORE_USAGE_MODEL.md`, `docs/STRIPE_INTEGRATION.md`
-- Observability: `docs/OBSERVABILITY.md` and importable Grafana dashboard at `assets/grafana/oscillink_dashboard.json`
-- Image signing: `docs/IMAGE_SIGNING.md`
-- Operations runbook: `docs/OPERATIONS.md`
-- Networking & egress: `docs/NETWORKING.md`
-- Pricing (licensed container): `docs/PRICING.md`
+- SDK API: `docs/reference/API.md`
+- Math overview: `docs/foundations/MATH_OVERVIEW.md`
+- Receipts schema and examples: `docs/reference/RECEIPTS.md`
+- Advanced cloud topics: `docs/cloud/CLOUD_ARCH_GCP.md`, `docs/cloud/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md`, `docs/cloud/FIRESTORE_USAGE_MODEL.md`, `docs/billing/STRIPE_INTEGRATION.md`
+- Observability: `docs/ops/OBSERVABILITY.md` and importable Grafana dashboard at `assets/grafana/oscillink_dashboard.json`
+- Image signing: `docs/ops/IMAGE_SIGNING.md`
+- Operations runbook: `docs/ops/OPERATIONS.md`
+- Networking & egress: `docs/ops/NETWORKING.md`
+- Pricing (licensed container): `docs/billing/PRICING.md`
 - OpenAPI baseline: `openapi_baseline.json`
 - Whitepaper: Oscillink — A Symmetric Positive Definite Lattice for Scalable Working Memory & Hallucination Control (`OscillinkWhitepaper.tex`)
 - Examples: `examples/quickstart.py`, `examples/diffusion_gated.py`
@@ -886,9 +937,9 @@ Notes:
 
 ## Legal
 
-- Terms of Service: [`docs/TERMS.md`](docs/TERMS.md)
-- Privacy Policy: [`docs/PRIVACY.md`](docs/PRIVACY.md)
-- Data Processing Addendum (DPA): [`docs/DPA.md`](docs/DPA.md)
+- Terms of Service: [`docs/product/TERMS.md`](docs/product/TERMS.md)
+- Privacy Policy: [`docs/product/PRIVACY.md`](docs/product/PRIVACY.md)
+- Data Processing Addendum (DPA): [`docs/billing/DPA.md`](docs/billing/DPA.md)
 
 ### Patent and OSS usage (FAQ)
 
@@ -934,10 +985,10 @@ Notes:
 
 - Success page didn’t show a key after payment
 	- Verify the Stripe payment link redirects to `/billing/success?session_id={CHECKOUT_SESSION_ID}`
-	- Ensure the server has `STRIPE_SECRET_KEY` and price→tier mapping configured; see `docs/STRIPE_INTEGRATION.md`
+	- Ensure the server has `STRIPE_SECRET_KEY` and price→tier mapping configured; see `docs/billing/STRIPE_INTEGRATION.md`
 
 - Redis not used despite being configured
-	- Set `OSCILLINK_STATE_BACKEND=redis` and provide `OSCILLINK_REDIS_URL` (or `REDIS_URL`); see `docs/REDIS_BACKEND.md`.
+	- Set `OSCILLINK_STATE_BACKEND=redis` and provide `OSCILLINK_REDIS_URL` (or `REDIS_URL`); see `docs/ops/REDIS_BACKEND.md`.
 	- For CLI pairing sessions specifically, also set `OSCILLINK_CLI_SESSIONS_BACKEND=redis` (see “Redis-backed CLI sessions” above).
 
 ## Error taxonomy (quick reference)
@@ -1009,4 +1060,4 @@ Simple per-container licensing with clear entitlements and an enterprise cluster
 - Dev (free) for labs/evaluation with caps
 - Annual discount: 2 months free; Founding cohort: first 100 buyers lock pricing for 12 months
 
-See full details, market anchors, and entitlements: `docs/PRICING.md`.
+See full details, market anchors, and entitlements: `docs/billing/PRICING.md`.

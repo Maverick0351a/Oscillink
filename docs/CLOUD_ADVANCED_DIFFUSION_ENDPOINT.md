@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/cloud/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md](./cloud/CLOUD_ADVANCED_DIFFUSION_ENDPOINT.md)
 # Cloud Advanced Diffusion Settle Endpoint (Draft)
 
 Status: Proposal (Phase 2)

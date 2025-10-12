@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/guides/CHAIN_GUIDE.md](./guides/CHAIN_GUIDE.md)
 # Chain Priors and Chain Receipts
 
 **Why**: encode expected reasoning/workflow paths (A→B→C→D) without breaking SPD.

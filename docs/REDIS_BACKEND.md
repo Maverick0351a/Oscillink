@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/ops/REDIS_BACKEND.md](./ops/REDIS_BACKEND.md)
 # Optional Redis Backend
 
 This service can optionally use Redis for distributed state to support horizontal scaling:

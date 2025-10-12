@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/ops/NETWORKING.md](./ops/NETWORKING.md)
 # Networking & egress strategy
 
 Kubernetes NetworkPolicy cannot match FQDNs. To restrict egress by domain, use one of:

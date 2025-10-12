@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/cloud/DEPLOY_STRIPE_CLOUD.md](./cloud/DEPLOY_STRIPE_CLOUD.md)
 # Deploying Stripe-only Onboarding (Production)
 
 This guide covers deploying the Stripe Payment Links flow with the built-in success page at `/billing/success` so users can buy a plan and immediately get an API key—no custom website needed.
@@ -23,7 +26,7 @@ Set these on your production server/process (live keys):
     - `price_1SGaX8LcPYf7t6os42l7qFbT:enterprise`
 - Optional (recommended): `OSCILLINK_ALLOW_UNVERIFIED_STRIPE=0`
 
-See also: docs/STRIPE_INTEGRATION.md → “Production mapping (ODIN)”.
+See also: docs/billing/STRIPE_INTEGRATION.md → “Production mapping (ODIN)”.
 
 ## Stripe configuration
 
@@ -89,4 +92,4 @@ $Env:OSCILLINK_STRIPE_PRICE_MAP = 'price_test_free:free;price_test_beta:beta;pri
 
 ---
 
-For architecture and integration details, see `docs/STRIPE_INTEGRATION.md`.
+For architecture and integration details, see `docs/billing/STRIPE_INTEGRATION.md`.

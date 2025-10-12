@@ -5,7 +5,7 @@
 - Maintainer: travisjohnson@oscillink.com
 
 Additional resources:
-- Terms: docs/TERMS.md
-- Privacy: docs/PRIVACY.md
-- DPA: docs/DPA.md
+- Terms: docs/product/TERMS.md
+- Privacy: docs/product/PRIVACY.md
+- DPA: docs/billing/DPA.md
 - Issues: https://github.com/Maverick0351a/Oscillink/issues

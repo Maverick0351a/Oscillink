@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/foundations/DIFFUSION_WHITEPAPER_OUTLINE.md](./foundations/DIFFUSION_WHITEPAPER_OUTLINE.md)
 # Oscillink Screened Diffusion Whitepaper — Outline (Draft)
 
 ## 1. Executive Summary

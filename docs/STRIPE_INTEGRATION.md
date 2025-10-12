@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/billing/STRIPE_INTEGRATION.md](./billing/STRIPE_INTEGRATION.md)
 # Stripe Integration (Draft)
 
 Status: Draft (Should). Align product & price IDs before coding.

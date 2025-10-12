@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/guides/SCALING.md](./guides/SCALING.md)
 # Scaling Oscillink: From Single Lattice to Lattice of Lattices
 
 This document outlines how Oscillink Lattice scales from a single in‑process working memory to hierarchical, horizontally distributed “lattices of lattices” while preserving the same **physics‑based SPD energy contract**.

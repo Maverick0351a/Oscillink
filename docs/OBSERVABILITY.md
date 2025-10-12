@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/ops/OBSERVABILITY.md](./ops/OBSERVABILITY.md)
 # Observability: Prometheus + Grafana
 
 This repo exposes Prometheus metrics at `/metrics` via the FastAPI service (`cloud/app/main.py`).

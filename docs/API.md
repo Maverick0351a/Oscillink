@@ -1,3 +1,8 @@
+This document has moved.
+
+New location: [docs/reference/API.md](./reference/API.md)
+
+Please update bookmarks to the canonical path above.
 # API
 
 ```python

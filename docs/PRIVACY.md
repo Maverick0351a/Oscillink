@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/product/PRIVACY.md](./product/PRIVACY.md)
 # Privacy Policy (Beta)
 
 This policy covers the Oscillink SDK and the optional hosted Cloud API.

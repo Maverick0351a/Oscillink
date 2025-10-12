@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/reference/RECEIPT_SCHEMA.md](./reference/RECEIPT_SCHEMA.md)
 # Receipt Schema
 
 Authoritative description of the JSON object returned by `OscillinkLattice.receipt()` and `chain_receipt()`.

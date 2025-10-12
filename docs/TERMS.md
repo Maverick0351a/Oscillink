@@ -1,3 +1,6 @@
+This document has moved.
+
+New location: [docs/product/TERMS.md](./product/TERMS.md)
 # Terms of Service (Beta)
 
 These Terms apply to the Oscillink Cloud beta service. This is a non-exhaustive template and does not constitute legal advice.

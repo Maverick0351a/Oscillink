@@ -1,6 +1,9 @@
+This document has moved.
+
+New location: [docs/foundations/MATH_OVERVIEW.md](./foundations/MATH_OVERVIEW.md)
 # Math Overview (Concise)
 
-This overview orients you to the core mathematical objects used by Oscillink Lattice. For deeper formalism see `docs/SPEC.md` and API nuances in `docs/API.md`.
+This overview orients you to the core mathematical objects used by Oscillink Lattice. For deeper formalism see `docs/foundations/SPEC.md` and API nuances in `docs/reference/API.md`. For physical intuition (energy, diffusion, control), see `docs/foundations/PHYSICS_FOUNDATIONS.md`.
 
 ## 1. Objective & Stationary State
 

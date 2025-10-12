@@ -42,9 +42,9 @@ Changelog = "https://github.com/Maverick0351a/Oscillink/blob/main/CHANGELOG.md"
 Security = "https://github.com/Maverick0351a/Oscillink/blob/main/SECURITY.md"
 Support = "https://github.com/Maverick0351a/Oscillink/blob/main/SUPPORT.md"
 Funding = "https://buy.stripe.com/7sY9AUbcK1if2y6d2g2VG08"
-Terms = "https://github.com/Maverick0351a/Oscillink/blob/main/docs/TERMS.md"
-Privacy = "https://github.com/Maverick0351a/Oscillink/blob/main/docs/PRIVACY.md"
-DPA = "https://github.com/Maverick0351a/Oscillink/blob/main/docs/DPA.md"
+Terms = "https://github.com/Maverick0351a/Oscillink/blob/main/docs/product/TERMS.md"
+Privacy = "https://github.com/Maverick0351a/Oscillink/blob/main/docs/product/PRIVACY.md"
+DPA = "https://github.com/Maverick0351a/Oscillink/blob/main/docs/billing/DPA.md"
 
 [project.scripts]
 oscillink = "oscillink.cli:main"
