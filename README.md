@@ -8,6 +8,7 @@ Build coherence into retrieval and generation. Deterministic receipts for every 
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/pip-audit.yml"><img alt="pip-audit" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/pip-audit.yml/badge.svg?branch=main"/></a>
 	<a href="https://app.codecov.io/gh/Maverick0351a/Oscillink/tree/main"><img alt="Coverage" src="https://codecov.io/gh/Maverick0351a/Oscillink/branch/main/graph/badge.svg"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI" src="https://img.shields.io/pypi/v/oscillink.svg"/></a>
+	<a href="https://pypi.org/project/oscillink/"><img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dm/oscillink"/></a>
 	<a href="https://pypi.org/project/oscillink/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/oscillink.svg"/></a>
 	<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/oscillink.svg"/></a>
 	<a href="PATENTS.md"><img alt="Patent pending" src="https://img.shields.io/badge/Patent-pending-blueviolet.svg"/></a>
@@ -21,6 +22,9 @@ Build coherence into retrieval and generation. Deterministic receipts for every 
 <p align="center">
   <a href="https://pypi.org/project/oscillink/"><img alt="pip install oscillink" src="https://img.shields.io/badge/pip%20install-oscillink-3776AB?logo=pypi&logoColor=white"/></a>
 </p>
+
+<p align="center"><b>Coherence-first memory for any embeddings. Deterministic receipts. Under 40ms E2E at N≈1200.</b><br/>
+<code>pip install oscillink</code></p>
 
 Setup: synthetic “facts + traps” dataset — see the notebook for N, k, trials, seed. Reproducible via `notebooks/04_hallucination_reduction.ipynb`. Traps flagged; gate=0.01, off‑topic damp=0.5.
 
