@@ -91,3 +91,5 @@ cloud/env.private.yaml
 cloud/env.stripe.yaml
 cloud/env.all.yaml
 cloud/whsec.txt
+trusted.env
+trusted.yaml

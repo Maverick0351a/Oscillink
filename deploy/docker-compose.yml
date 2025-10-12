@@ -15,6 +15,14 @@ services:
       # OSCILLINK_JWKS_OFFLINE_GRACE: "86400"
       OSCILLINK_TELEMETRY: "minimal"
       OSCILLINK_USAGE_LOG: "/data/usage.jsonl"
+  # --- Stripe billing (optional) ---
+  # STRIPE_SECRET_KEY: "sk_live_xxx"
+  # STRIPE_WEBHOOK_SECRET: "whsec_xxx"
+  # OSCILLINK_STRIPE_PRICE_MAP: ${OSCILLINK_STRIPE_PRICE_MAP:-}
+  # OSCILLINK_STRIPE_MAX_AGE: "300"   # max timestamp age for webhook signature
+  # OSCILLINK_ALLOW_UNVERIFIED_STRIPE: "0"  # NEVER enable in prod
+  # OSCILLINK_CUSTOMERS_COLLECTION: "oscillink_customers"  # enable when using Firestore mapping
+  # OSCILLINK_WEBHOOK_EVENTS_COLLECTION: "oscillink_webhooks"  # optional persistence for events
       # Optional: configure flush to your service
       # OSCILLINK_USAGE_FLUSH_URL: "https://license.oscillink.com/v1/usage/report"
       # OSCILLINK_LICENSE_ID: "lic_xxx"

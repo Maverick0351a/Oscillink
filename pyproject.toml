@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oscillink"
-version = "0.1.12"
+version = "0.1.13"
 description = "Oscillink Lattice — Short-Term Coherence SDK (physics-inspired memory for generative models)"
 authors = [{name="Oscillink", email="contact@oscillink.com"}]
 maintainers = [{name = "Travis Johnson", email = "travisjohnson@oscillink.com"}]
