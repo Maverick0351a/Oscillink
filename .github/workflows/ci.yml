@@ -61,7 +61,7 @@ jobs:
           name: coverage-xml-${{ matrix.python-version }}-numpy${{ matrix.numpy-series }}-run${{ github.run_attempt }}
           path: coverage.xml
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage.xml
           flags: unittests
