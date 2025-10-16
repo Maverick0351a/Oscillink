@@ -34,7 +34,7 @@ jobs:
         run: |
           docker build -t oscillink:licensed -f cloud/Dockerfile.licensed .
       - name: Trivy scan (non-blocking)
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: 'oscillink:licensed'
           format: 'table'
