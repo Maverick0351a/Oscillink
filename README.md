@@ -1,6 +1,8 @@
-# Oscillink — Self‑Optimizing Coherent Memory for Embedding Workflows
+# Oscillink — Self‑Optimizing Memory for Embedding Workflows. Bridge your own LLMs, Embedding Models, and databases.
 
-Build coherence into retrieval and generation. Deterministic receipts for every decision. Latency that scales gracefully with corpus size.
+A physics‑inspired, model‑free coherence layer that transforms candidate embeddings into an explainable working‑memory state via convex energy minimization. Deterministic receipts for audit. Conjugate‑gradient solve with SPD guarantees.
+
+Build coherence into retrieval and generation. Deterministic receipts for every decision. Latency that scales gracefully with corpus size. This is the missing layer from your RAG stack.   
 
 <p align="left">
 	<a href="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Maverick0351a/Oscillink/actions/workflows/ci.yml/badge.svg?branch=main"/></a>
@@ -24,8 +26,6 @@ Build coherence into retrieval and generation. Deterministic receipts for every 
   <a href="https://pypi.org/project/oscillink/"><img alt="pip install oscillink" src="https://img.shields.io/badge/pip%20install-oscillink-3776AB?logo=pypi&logoColor=white"/></a>
 </p>
 
-<p align="center"><b>A physics‑inspired, model‑free coherence layer that transforms candidate embeddings into an explainable working‑memory state via convex energy minimization. Deterministic receipts for audit. Conjugate‑gradient solve with SPD guarantees.</b><br/>
-<code>pip install oscillink</code></p>
 
 Setup: synthetic “facts + traps” dataset — see the notebook for N, k, trials, seed. Reproducible via `notebooks/04_hallucination_reduction.ipynb`. Traps flagged; gate=0.01, off‑topic damp=0.5.
 
