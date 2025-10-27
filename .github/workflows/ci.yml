@@ -49,13 +49,13 @@ jobs:
         run: |
           python -m scripts.check_openapi_diff_simple --prev prev_openapi.json --current openapi.json || (echo "OpenAPI diff check failed" && exit 1)
       - name: Upload OpenAPI schema artifact (per-matrix)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           # Ensure uniqueness per matrix job and rerun attempt to avoid 409
           name: openapi-schema-${{ matrix.python-version }}-numpy${{ matrix.numpy-series }}-run${{ github.run_attempt }}
           path: openapi.json
       - name: Upload coverage xml (per-matrix)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           # Ensure uniqueness per matrix job and rerun attempt to avoid 409
           name: coverage-xml-${{ matrix.python-version }}-numpy${{ matrix.numpy-series }}-run${{ github.run_attempt }}
@@ -77,13 +77,13 @@ jobs:
     needs: test
     steps:
       - name: Merge OpenAPI schema artifacts
-        uses: actions/upload-artifact/merge@v4
+        uses: actions/upload-artifact/merge@v5
         with:
             name: openapi-schema
             pattern: openapi-schema-*
             retention-days: 7
       - name: Merge coverage xml artifacts
-        uses: actions/upload-artifact/merge@v4
+        uses: actions/upload-artifact/merge@v5
         with:
             name: coverage-xml
             pattern: coverage-xml-*
